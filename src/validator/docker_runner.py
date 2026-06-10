@@ -94,6 +94,16 @@ class StackRunner:
         self._docker_client: Any = None
         self._log = structlog.get_logger(__name__).bind(run_id=self.run_id)
 
+    @property
+    def postgres_password(self) -> str:
+        """The generated POSTGRES_PASSWORD for this run (used by benchmarks)."""
+        return self._postgres_password
+
+    @property
+    def network_name(self) -> str:
+        """The isolated bridge network name (used by sidecar containers)."""
+        return f"stack_{self.run_id}_net"
+
     # ------------------------------------------------------------------
     # Rendering
     # ------------------------------------------------------------------
@@ -248,7 +258,12 @@ class StackRunner:
         self._log.warning("wait_healthy_timeout", health=health)
         return health
 
-    def exec_in(self, service: str, command: list[str]) -> CommandResult:
+    def exec_in(
+        self,
+        service: str,
+        command: list[str],
+        environment: dict[str, str] | None = None,
+    ) -> CommandResult:
         """Run a command inside a service's container."""
         container = self._container(service)
         if container is None:
@@ -257,7 +272,9 @@ class StackRunner:
                 exit_code=127, duration_s=0.0,
             )
         start = time.monotonic()
-        exit_code, output = container.exec_run(command, demux=True)
+        exit_code, output = container.exec_run(
+            command, demux=True, environment=environment or {}
+        )
         duration = time.monotonic() - start
         stdout_b, stderr_b = output if output else (None, None)
         result = CommandResult(

@@ -10,5 +10,6 @@ from src.validator.docker_runner import (
     StackRunner,
     StackStartupError,
 )
+from src.validator.runner import validate_config
 
-__all__ = ["CommandResult", "StackRunner", "StackStartupError"]
+__all__ = ["CommandResult", "StackRunner", "StackStartupError", "validate_config"]
