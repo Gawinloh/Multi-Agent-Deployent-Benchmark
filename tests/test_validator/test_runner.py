@@ -111,6 +111,19 @@ class TestRedisBenchmarkParser:
     def test_garbage_reports_error(self) -> None:
         assert parse_redis_benchmark_output("NOAUTH").error_message is not None
 
+    def test_carriage_return_progress_is_handled(self) -> None:
+        # redis-benchmark emits live progress via carriage returns before the
+        # final summary line; the parser must still find SET/GET (real-Docker
+        # regression — clean canned output never exercised this).
+        raw = (
+            "SET: rps=12000.0\rSET: 112359.55 requests per second, p50=0.031 msec\n"
+            "GET: rps=9000.0\rGET: 57471.27 requests per second, p50=0.039 msec\n"
+        )
+        result = parse_redis_benchmark_output(raw)
+        assert result.error_message is None
+        assert result.throughput == pytest.approx((112359.55 + 57471.27) / 2)
+        assert result.latency_p50 == pytest.approx((0.031 + 0.039) / 2)
+
 
 # ---------------------------------------------------------------------------
 # validate_config pipeline (mocked)

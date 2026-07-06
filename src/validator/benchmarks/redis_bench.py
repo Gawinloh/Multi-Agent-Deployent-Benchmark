@@ -29,7 +29,12 @@ def parse_redis_benchmark_output(text: str) -> BenchmarkResult:
 
     Handles both the modern format ("SET: 85470.09 requests per second,
     p50=0.295 msec") and the older one without the p50 suffix.
+
+    redis-benchmark prints live progress using carriage returns, so in real
+    output the final SET/GET summary lines are not newline-anchored. Normalise
+    carriage returns to newlines first so the line anchor matches.
     """
+    text = text.replace("\r", "\n")
     throughputs: list[float] = []
     p50s: list[float] = []
     for match in _LINE.finditer(text):
