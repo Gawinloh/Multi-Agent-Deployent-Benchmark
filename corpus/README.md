@@ -44,16 +44,15 @@ license: "PostgreSQL License"  # recommended; defaults to "unknown"
   into ~500-word windows with 50-word overlap, so very long files are
   fine but focused files retrieve better.
 
-## Current contents
+## Current contents (26 documents, retrieved 2026-07-06)
 
-Placeholder — to be populated from primary sources during W3:
-
-- [ ] postgres/: Resource Consumption, Connections & Authentication, WAL,
-      SSL/TLS, logging chapters; pgtune heuristics notes
-- [ ] nginx/: core module, http module, ssl module docs
-- [ ] redis/: eviction, persistence, security pages
-- [ ] cis-benchmarks/: L1 control extracts for all three services
-- [ ] tuning-guides/: Crunchy/Percona PG tuning, Mozilla SSL config
-      (intermediate profile), Antirez on LRU/LFU
-
-Record the retrieval date and license for every document you add.
+- [x] postgres/ (8 files): Resource Consumption, Connections & Authentication, WAL,
+      Client Authentication (pg_hba.conf), SSL/TLS, Logging, pgtune heuristics, pgAudit
+- [x] nginx/ (6 files): Core module, HTTP core module, SSL module, Gzip module,
+      Headers module (security headers), Mozilla SSL intermediate profile
+- [x] redis/ (5 files): Memory/eviction, Persistence (RDB/AOF), Security,
+      Networking, LRU/LFU eviction tuning notes
+- [x] cis-benchmarks/ (3 files): CIS L1 control extracts for PostgreSQL (14 controls),
+      nginx (10 controls), Redis (8 controls) — matched to validator code
+- [x] tuning-guides/ (4 files): Crunchy PG tuning, Percona PG memory,
+      Mozilla SSL intermediate profile rationale, Resource allocation guide (authored)
