@@ -188,7 +188,6 @@ def _stub_registry() -> ToolRegistry:
             "nginx_conf": "...",
             "redis_conf": "...",
             "pg_hba_conf": "...",
-            "compose_yml": "...",
             "spec": _good_spec_dict(),
         }
 

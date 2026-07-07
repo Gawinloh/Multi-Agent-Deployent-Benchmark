@@ -30,13 +30,16 @@ logger = structlog.get_logger(__name__)
 
 @dataclass(frozen=True)
 class GeneratedFiles:
-    """The rendered configuration artefacts produced by :func:`generate_config`."""
+    """The rendered configuration artefacts produced by :func:`generate_config`.
+
+    Does NOT include docker-compose.yml — the validator harness renders
+    its own via the Jinja template (single source of truth).
+    """
 
     postgresql_conf: str
     pg_hba_conf: str
     nginx_conf: str
     redis_conf: str
-    compose_yml: str
     spec: StackSpec
 
 
@@ -56,7 +59,6 @@ def _render(spec: StackSpec) -> GeneratedFiles:
         pg_hba_conf=spec.pg_hba.render_hba(),
         nginx_conf=spec.nginx.render_conf(),
         redis_conf=spec.redis.render_conf(),
-        compose_yml=spec.render_compose(),
         spec=spec,
     )
 
@@ -79,8 +81,8 @@ def generate_config(
             ``"complete"``.
 
     Returns:
-        :class:`GeneratedFiles` containing the four config file bodies,
-        the compose YAML, and the completed :class:`StackSpec`.
+        :class:`GeneratedFiles` containing the four config file bodies
+        and the completed :class:`StackSpec`.
 
     Raises:
         ValidationError: if *partial_spec* cannot be parsed in
