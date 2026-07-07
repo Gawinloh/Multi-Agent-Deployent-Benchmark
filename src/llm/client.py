@@ -93,18 +93,39 @@ def _split_system(messages: list[Message]) -> tuple[str | None, list[Message]]:
     return ("\n\n".join(system_parts) or None, rest)
 
 
+def _fix_json_quirks(text: str) -> str:
+    """Best-effort repair of common LLM JSON mistakes.
+
+    Fixes applied (order matters):
+    1. Strip single-line ``// …`` and ``/* … */`` comments.
+    2. Remove trailing commas before ``}`` or ``]``.
+    3. Replace Python-style ``True/False/None`` with JSON equivalents.
+    """
+    # 1. Comments (single-line // and block /* */)
+    text = re.sub(r"//[^\n]*", "", text)
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+    # 2. Trailing commas:  ,  }  or  ,  ]
+    text = re.sub(r",\s*([}\]])", r"\1", text)
+    # 3. Python booleans / None  (whole-word, inside JSON values)
+    text = re.sub(r"\bTrue\b", "true", text)
+    text = re.sub(r"\bFalse\b", "false", text)
+    text = re.sub(r"\bNone\b", "null", text)
+    return text
+
+
 def _extract_json(text: str) -> str:
     """Pull a JSON object out of an LLM response.
 
     Handles bare JSON, ```json fenced blocks, and JSON embedded in prose
-    (first ``{`` to last ``}``).
+    (first ``{`` to last ``}``). Applies ``_fix_json_quirks`` to repair
+    trailing commas, comments, and Python literals before returning.
     """
     fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
     if fenced:
-        return fenced.group(1)
+        return _fix_json_quirks(fenced.group(1))
     start, end = text.find("{"), text.rfind("}")
     if start != -1 and end > start:
-        return text[start : end + 1]
+        return _fix_json_quirks(text[start : end + 1])
     return text
 
 
@@ -138,7 +159,7 @@ def _parse_with_retries(
         try:
             parsed = schema.model_validate_json(_extract_json(text))
             return parsed, total_usage
-        except (ValidationError, ValueError) as exc:
+        except (ValidationError, ValueError, json.JSONDecodeError) as exc:
             last_error = exc
             logger.warning(
                 "schema_validation_failed",
