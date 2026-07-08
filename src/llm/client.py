@@ -204,9 +204,24 @@ class OllamaClient(LLMClient):
         kwargs: dict[str, Any] = {}
         if format is not None:
             kwargs["format"] = format
-        response = self._client.chat(
-            model=self._model, messages=messages, **kwargs
-        )
+        try:
+            response = self._client.chat(
+                model=self._model, messages=messages, **kwargs
+            )
+        except Exception as exc:
+            # Ollama's grammar parser can't handle deeply-nested JSON
+            # schemas (e.g. StackSpec with $defs/$ref).  Fall back to
+            # basic JSON mode — _parse_with_retries still validates.
+            if isinstance(format, dict) and "failed to parse grammar" in str(exc):
+                logger.warning(
+                    "ollama_grammar_fallback",
+                    error=str(exc)[:120],
+                )
+                response = self._client.chat(
+                    model=self._model, messages=messages, format="json"
+                )
+            else:
+                raise
         usage = TokenUsage(
             input_tokens=response.get("prompt_eval_count", 0) or 0,
             output_tokens=response.get("eval_count", 0) or 0,
