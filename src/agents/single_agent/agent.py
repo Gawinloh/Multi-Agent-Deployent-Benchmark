@@ -162,14 +162,26 @@ class SingleAgent:
                     deps["budget"] = self._budget
 
                 # Small models often fail to forward the generated spec to
-                # validate_config, constructing a broken dict instead.
-                # Auto-inject the last successfully generated spec.
+                # validate_config / finalise, constructing a broken dict
+                # instead.  Auto-inject the last successfully generated spec.
                 if tool_call.name == "validate_config" and _last_spec is not None:
                     tool_call = ToolCall(
                         name="validate_config",
                         args={"spec": _last_spec},
                     )
                     log.info("auto_injected_spec_for_validation")
+
+                if tool_call.name == "finalise" and _last_spec is not None:
+                    tool_call = ToolCall(
+                        name="finalise",
+                        args={
+                            "final_spec": _last_spec,
+                            "reason": tool_call.args.get(
+                                "reason", "auto-finalised with last generated spec"
+                            ),
+                        },
+                    )
+                    log.info("auto_injected_spec_for_finalise")
 
                 observation = self._registry.dispatch(tool_call, **deps)
 
