@@ -33,7 +33,7 @@ class RedisMemoryParams(BaseModel):
     recommends allkeys-lru/lfu for pure-cache workloads."""
 
     maxmemory: str = Field(
-        pattern=r"^\d+\s?(kb|mb|gb|KB|MB|GB|b|B)?$", description='e.g. "2GB"'
+        pattern=r"^\d+(\.\d+)?\s?(kb|mb|gb|KB|MB|GB|b|B)?$", description='e.g. "2GB"'
     )
     maxmemory_policy: str
     maxmemory_samples: int = Field(ge=1, le=64)

@@ -12,6 +12,7 @@ registry.
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -22,6 +23,22 @@ from pydantic import BaseModel, Field, ValidationError
 from src.schemas.agent import ToolCall, ToolObservation
 
 logger = structlog.get_logger(__name__)
+
+
+def _to_json_safe(obj: Any) -> Any:
+    """Recursively convert Pydantic models and dataclasses to dicts."""
+    if isinstance(obj, BaseModel):
+        return obj.model_dump(mode="json")
+    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+        return {
+            k: _to_json_safe(v)
+            for k, v in dataclasses.asdict(obj).items()
+        }
+    if isinstance(obj, list):
+        return [_to_json_safe(item) for item in obj]
+    if isinstance(obj, dict):
+        return {k: _to_json_safe(v) for k, v in obj.items()}
+    return obj
 
 
 # ---------------------------------------------------------------------------
@@ -128,14 +145,8 @@ class ToolRegistry:
             logger.error("tool_dispatch_error", tool=call.name, error=str(exc))
             return ToolObservation(success=False, error=str(exc))
 
-        # Serialise Pydantic models to dicts for JSON-safe observations
-        if isinstance(result, BaseModel):
-            result = result.model_dump(mode="json")
-        elif isinstance(result, list):
-            result = [
-                item.model_dump(mode="json") if isinstance(item, BaseModel) else item
-                for item in result
-            ]
+        # Serialise to JSON-safe dicts for agent history
+        result = _to_json_safe(result)
 
         return ToolObservation(success=True, result=result)
 

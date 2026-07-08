@@ -17,8 +17,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-#: Memory size string like "4GB", "512MB", "64kB".
-MEMORY_PATTERN = r"^\d+\s?(kB|MB|GB|TB)$"
+#: Memory size string like "4GB", "512MB", "64kB", "1.5GB".
+MEMORY_PATTERN = r"^\d+(\.\d+)?\s?(kB|MB|GB|TB)$"
 
 
 class PostgresMemoryParams(BaseModel):

@@ -230,5 +230,7 @@ class TestDefaultRegistry:
             )
         )
         assert obs.success
-        # GeneratedFiles is a dataclass, not BaseModel — dispatch returns it raw
-        assert hasattr(obs.result, "postgresql_conf") or isinstance(obs.result, dict)
+        # GeneratedFiles dataclass is serialised to a JSON-safe dict
+        assert isinstance(obs.result, dict)
+        assert "postgresql_conf" in obs.result
+        assert "shared_buffers" in obs.result["postgresql_conf"]

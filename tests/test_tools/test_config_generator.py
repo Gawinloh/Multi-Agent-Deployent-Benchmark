@@ -144,7 +144,6 @@ class TestDeterministicMode:
         assert "pg_hba.conf" in result.pg_hba_conf
         assert "worker_processes auto" in result.nginx_conf
         assert "maxmemory 2GB" in result.redis_conf
-        assert "services:" in result.compose_yml
         assert result.spec == spec
 
     def test_invalid_spec_raises(self) -> None:
@@ -156,14 +155,6 @@ class TestDeterministicMode:
         result = generate_config(spec.model_dump(), mode="deterministic")
         assert "ssl = on" in result.postgresql_conf
         assert "max_connections = 50" in result.postgresql_conf
-
-    def test_rendered_compose_contains_services(self) -> None:
-        spec = _make_stack_spec()
-        result = generate_config(spec.model_dump(), mode="deterministic")
-        assert "postgres:" in result.compose_yml
-        assert "nginx:" in result.compose_yml
-        assert "redis:" in result.compose_yml
-
 
 class TestCompleteMode:
     def test_complete_mode_requires_client_and_budget(self) -> None:

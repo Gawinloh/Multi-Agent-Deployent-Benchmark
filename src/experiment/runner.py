@@ -62,7 +62,10 @@ def _run_single(
     run_result.started_at = RunResult.now_iso()
 
     try:
-        client = get_client()
+        model_kwargs: dict[str, Any] = {}
+        if model and model != "default":
+            model_kwargs["model"] = model
+        client = get_client(**model_kwargs)
         budget = TokenBudget(budget_limit)
         agent = SingleAgent(client, budget, max_iterations=max_iterations)
 
