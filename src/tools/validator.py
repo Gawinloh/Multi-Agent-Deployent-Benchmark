@@ -25,11 +25,20 @@ def validate_config_tool(spec: dict[str, Any]) -> ValidatorReport:
 
     Args:
         spec: dict that should validate as a :class:`StackSpec`.
+            Also accepts a ``GeneratedFiles``-shaped dict — if the input
+            has both ``"spec"`` and ``"postgresql_conf"`` keys, the nested
+            ``"spec"`` is extracted automatically.
 
     Returns:
         :class:`ValidatorReport` — always returns (never raises); errors
         are captured in the report's ``error`` field.
     """
+    # The agent sometimes passes the full GeneratedFiles dict (with
+    # rendered config strings) instead of just the StackSpec.  Extract
+    # the nested spec so validation proceeds normally.
+    if "spec" in spec and "postgresql_conf" in spec:
+        spec = spec["spec"]  # type: ignore[assignment]
+
     try:
         stack_spec = StackSpec.model_validate(spec)
     except ValidationError as exc:

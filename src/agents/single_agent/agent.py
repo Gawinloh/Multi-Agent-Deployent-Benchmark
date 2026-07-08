@@ -23,9 +23,9 @@ from typing import Any
 import structlog
 from pydantic import BaseModel, Field
 
-from src.llm.client import BudgetEnforcer, LLMClient
+from src.llm.client import BudgetEnforcer, LLMClient, SchemaParseError
 from src.llm.token_budget import BudgetExhausted, TokenBudget
-from src.schemas.agent import AgentThought, HistoryEntry, ToolCall
+from src.schemas.agent import AgentThought, HistoryEntry, ToolCall, ToolObservation
 from src.schemas.stack import StackSpec
 from src.schemas.validator_report import ValidatorReport
 from src.tools.registry import ToolRegistry, get_default_registry
@@ -118,7 +118,31 @@ class SingleAgent:
                 messages = render_react_prompt(request, history_dicts, tools_desc)
 
                 # 2. Structured LLM call
-                step, _usage = self._enforcer.chat(messages, schema=AgentStep)
+                try:
+                    step, _usage = self._enforcer.chat(messages, schema=AgentStep)
+                except SchemaParseError as exc:
+                    log.warning(
+                        "agent_step_parse_error",
+                        iteration=iteration,
+                        error=str(exc)[:200],
+                    )
+                    # Record as a failed observation so the next iteration
+                    # sees the error and can try again.
+                    history.append(
+                        HistoryEntry(
+                            thought=AgentThought(
+                                reasoning="LLM produced unparseable JSON",
+                                planned_next_action="retry",
+                            ),
+                            tool_call=ToolCall(name="none", args={}),
+                            observation=ToolObservation(
+                                success=False,
+                                error=f"Schema parse failure: {str(exc)[:300]}",
+                            ),
+                        )
+                    )
+                    continue
+
                 thought = step.thought  # type: ignore[union-attr]
                 tool_call = step.tool_call  # type: ignore[union-attr]
                 log.info(
@@ -134,6 +158,23 @@ class SingleAgent:
                     deps["llm_client"] = self._client
                     deps["budget"] = self._budget
                 observation = self._registry.dispatch(tool_call, **deps)
+
+                # Strip rendered config strings from generate_config
+                # observations — the agent only needs the spec dict, and
+                # the rendered text wastes context tokens for small models.
+                if (
+                    tool_call.name == "generate_config"
+                    and observation.success
+                    and isinstance(observation.result, dict)
+                    and "spec" in observation.result
+                ):
+                    observation = ToolObservation(
+                        success=True,
+                        result={
+                            "config_generated": True,
+                            "spec": observation.result["spec"],
+                        },
+                    )
 
                 # Track latest validator report
                 if tool_call.name == "validate_config" and observation.success:
