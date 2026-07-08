@@ -107,6 +107,9 @@ class SingleAgent:
         history: list[HistoryEntry] = []
         result = AgentRunResult()
         last_report: ValidatorReport | None = None
+        # Cache the last successfully generated spec so validate_config
+        # can use it even when the agent constructs a broken spec dict.
+        _last_spec: dict[str, Any] | None = None
 
         try:
             for iteration in range(1, self._max_iterations + 1):
@@ -157,6 +160,17 @@ class SingleAgent:
                 if tool_call.name == "generate_config":
                     deps["llm_client"] = self._client
                     deps["budget"] = self._budget
+
+                # Small models often fail to forward the generated spec to
+                # validate_config, constructing a broken dict instead.
+                # Auto-inject the last successfully generated spec.
+                if tool_call.name == "validate_config" and _last_spec is not None:
+                    tool_call = ToolCall(
+                        name="validate_config",
+                        args={"spec": _last_spec},
+                    )
+                    log.info("auto_injected_spec_for_validation")
+
                 observation = self._registry.dispatch(tool_call, **deps)
 
                 # Strip rendered config strings from generate_config
@@ -168,11 +182,12 @@ class SingleAgent:
                     and isinstance(observation.result, dict)
                     and "spec" in observation.result
                 ):
+                    _last_spec = observation.result["spec"]
                     observation = ToolObservation(
                         success=True,
                         result={
                             "config_generated": True,
-                            "spec": observation.result["spec"],
+                            "spec": _last_spec,
                         },
                     )
 
