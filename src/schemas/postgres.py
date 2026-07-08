@@ -58,7 +58,7 @@ class PostgresSecurityParams(BaseModel):
     password_encryption: Literal["scram-sha-256", "md5"]
     log_connections: bool
     log_disconnections: bool
-    ssl_min_protocol_version: Literal["TLSv1.2", "TLSv1.3"]
+    ssl_min_protocol_version: Literal["TLSv1.2", "TLSv1.3"] = "TLSv1.2"
 
 
 class PostgresLoggingParams(BaseModel):

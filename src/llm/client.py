@@ -118,11 +118,14 @@ def _fix_json_quirks(text: str) -> str:
 
 
 def _escape_control_chars(text: str) -> str:
-    """Replace bare control characters (U+0000-U+001F) inside JSON
-    string values with their escaped equivalents.
+    """Replace bare control characters inside JSON string values.
 
-    Structural whitespace (newlines/tabs between tokens) is left alone;
-    only characters *inside* double-quoted strings are escaped.
+    Only escapes truly dangerous chars (U+0000-U+0008, U+000B-U+000C,
+    U+000E-U+001F).  Newlines (\\n), carriage returns (\\r), and tabs
+    (\\t) are left alone — they are valid structural whitespace between
+    JSON tokens, and escaping them when the in-string tracker mis-fires
+    (due to unbalanced quotes from the LLM) corrupts the JSON worse
+    than leaving them bare.
     """
     out: list[str] = []
     in_string = False
@@ -140,11 +143,8 @@ def _escape_control_chars(text: str) -> str:
             in_string = not in_string
             out.append(ch)
             continue
-        if in_string and ch != "\n" and ord(ch) < 0x20:
+        if in_string and ch not in ("\n", "\r", "\t") and ord(ch) < 0x20:
             out.append(f"\\u{ord(ch):04x}")
-            continue
-        if in_string and ch == "\n":
-            out.append("\\n")
             continue
         out.append(ch)
     return "".join(out)
