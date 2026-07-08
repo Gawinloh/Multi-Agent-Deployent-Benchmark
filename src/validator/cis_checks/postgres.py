@@ -32,9 +32,15 @@ class PostgresCISChecker:
     # -- helpers ---------------------------------------------------------
 
     def _psql(self, sql: str) -> tuple[str, bool]:
-        """Run SQL via psql -tAc; returns (stripped stdout, success)."""
+        """Run SQL via psql -tAc; returns (stripped stdout, success).
+
+        Connects via TCP to 127.0.0.1 with PGPASSWORD because Docker
+        exec runs as root, which fails ``peer`` auth on the Unix socket.
+        """
         result = self._runner.exec_in(
-            SERVICE, ["psql", "-U", "postgres", "-tAc", sql]
+            SERVICE,
+            ["psql", "-h", "127.0.0.1", "-U", "postgres", "-tAc", sql],
+            environment={"PGPASSWORD": self._runner.postgres_password},
         )
         return result.stdout.strip(), result.exit_code == 0
 

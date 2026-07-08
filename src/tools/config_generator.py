@@ -134,6 +134,7 @@ _STACKSPEC_EXAMPLE = """\
   "pg_hba": {
     "rules": [
       {"type": "local", "database": "all", "user": "all", "address": null, "auth_method": "peer"},
+      {"type": "host", "database": "all", "user": "all", "address": "127.0.0.1/32", "auth_method": "scram-sha-256"},
       {"type": "hostssl", "database": "all", "user": "all", "address": "0.0.0.0/0", "auth_method": "scram-sha-256"}
     ]
   }
