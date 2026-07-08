@@ -45,10 +45,20 @@ class GeneratedFiles:
 
 _COMPLETION_SYSTEM = (
     "You are an expert infrastructure engineer. Given partial deployment "
-    "requirements, propose sensible values for all fields. Your response "
-    "must be a JSON object that validates against the provided schema. "
-    "Authoritative sources: pgtune for PostgreSQL memory, Mozilla SSL "
-    "intermediate profile for TLS, CIS benchmarks for security defaults."
+    "requirements, produce a COMPLETE StackSpec JSON with sensible values "
+    "for every field. Your response must validate against the provided "
+    "JSON schema.\n\n"
+    "Tuning guidance:\n"
+    "- PostgreSQL: shared_buffers ~25% of RAM, effective_cache_size ~75%, "
+    "work_mem 16-64MB, wal_level replica, scram-sha-256 auth, ssl on, "
+    "TLSv1.2 minimum, log connections and disconnections (CIS L1)\n"
+    "- nginx: worker_processes auto, gzip on, server_tokens off, "
+    "autoindex off, TLSv1.2+TLSv1.3 protocols, prefer_server_ciphers on\n"
+    "- Redis: allkeys-lru for caches, everysec appendfsync, protected_mode "
+    "true, requirepass at least 12 chars, rename FLUSHALL and CONFIG\n"
+    "- pg_hba: peer for local, scram-sha-256 for hostssl, never use trust "
+    "for remote connections\n"
+    "- Memory sizes must be strings like '2GB', '512MB', '16kB'"
 )
 
 

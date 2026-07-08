@@ -196,8 +196,17 @@ class OllamaClient(LLMClient):
         self._model = model or os.environ.get("OLLAMA_MODEL", "qwen2.5:7b")
         self._client = ollama.Client(host=self._host)
 
-    def _generate(self, messages: list[Message]) -> tuple[str, TokenUsage]:
-        response = self._client.chat(model=self._model, messages=messages)
+    def _generate(
+        self,
+        messages: list[Message],
+        format: dict[str, Any] | str | None = None,
+    ) -> tuple[str, TokenUsage]:
+        kwargs: dict[str, Any] = {}
+        if format is not None:
+            kwargs["format"] = format
+        response = self._client.chat(
+            model=self._model, messages=messages, **kwargs
+        )
         usage = TokenUsage(
             input_tokens=response.get("prompt_eval_count", 0) or 0,
             output_tokens=response.get("eval_count", 0) or 0,
@@ -209,8 +218,14 @@ class OllamaClient(LLMClient):
     ) -> ChatResult:
         if schema is None:
             return self._generate(messages)
+        json_schema = schema.model_json_schema()
         prompted = [{"role": "system", "content": _schema_instruction(schema)}, *messages]
-        return _parse_with_retries(self._generate, prompted, schema, self.backend_name)
+        return _parse_with_retries(
+            lambda msgs: self._generate(msgs, format=json_schema),
+            prompted,
+            schema,
+            self.backend_name,
+        )
 
 
 class AnthropicClient(LLMClient):
