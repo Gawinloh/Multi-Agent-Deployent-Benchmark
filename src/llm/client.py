@@ -93,13 +93,16 @@ def _split_system(messages: list[Message]) -> tuple[str | None, list[Message]]:
     return ("\n\n".join(system_parts) or None, rest)
 
 
-def _fix_json_quirks(text: str) -> str:
+def _fix_json_quirks(text: str, *, skip_newlines: bool = False) -> str:
     """Best-effort repair of common LLM JSON mistakes.
 
     Fixes applied (order matters):
     1. Strip single-line ``// …`` and ``/* … */`` comments.
     2. Remove trailing commas before ``}`` or ``]``.
     3. Replace Python-style ``True/False/None`` with JSON equivalents.
+    4. Escape control characters (see ``_escape_control_chars``).
+
+    *skip_newlines* is forwarded to ``_escape_control_chars``.
     """
     # 1. Comments (single-line // and block /* */)
     text = re.sub(r"//[^\n]*", "", text)
@@ -113,20 +116,25 @@ def _fix_json_quirks(text: str) -> str:
     # 4. Escape literal control characters inside JSON strings.
     #    Small models often emit raw \n/\t/\r inside string values
     #    instead of the escaped \\n/\\t/\\r that JSON requires.
-    text = _escape_control_chars(text)
+    #    The skip_newlines flag is threaded through from _extract_json's
+    #    two-pass strategy.
+    text = _escape_control_chars(text, skip_newlines=skip_newlines)
     return text
 
 
-def _escape_control_chars(text: str) -> str:
+def _escape_control_chars(text: str, *, skip_newlines: bool = False) -> str:
     """Replace bare control characters inside JSON string values.
 
-    Only escapes truly dangerous chars (U+0000-U+0008, U+000B-U+000C,
-    U+000E-U+001F).  Newlines (\\n), carriage returns (\\r), and tabs
-    (\\t) are left alone — they are valid structural whitespace between
-    JSON tokens, and escaping them when the in-string tracker mis-fires
-    (due to unbalanced quotes from the LLM) corrupts the JSON worse
-    than leaving them bare.
+    Walks the text tracking whether we are inside a ``"``-delimited JSON
+    string and escapes control chars (U+0000–U+001F) found there.
+
+    When *skip_newlines* is ``True``, ``\\n``, ``\\r``, and ``\\t`` are
+    left alone.  This is the fallback used when the in-string tracker
+    mis-fires due to unbalanced quotes from the LLM — escaping
+    structural whitespace in that situation corrupts the JSON worse than
+    leaving bare newlines inside strings.
     """
+    skip: set[str] = {"\n", "\r", "\t"} if skip_newlines else set()
     out: list[str] = []
     in_string = False
     escaped = False
@@ -143,7 +151,7 @@ def _escape_control_chars(text: str) -> str:
             in_string = not in_string
             out.append(ch)
             continue
-        if in_string and ch not in ("\n", "\r", "\t") and ord(ch) < 0x20:
+        if in_string and ord(ch) < 0x20 and ch not in skip:
             out.append(f"\\u{ord(ch):04x}")
             continue
         out.append(ch)
@@ -156,14 +164,49 @@ def _extract_json(text: str) -> str:
     Handles bare JSON, ```json fenced blocks, and JSON embedded in prose
     (first ``{`` to last ``}``). Applies ``_fix_json_quirks`` to repair
     trailing commas, comments, and Python literals before returning.
+
+    Uses a two-pass strategy for control-character escaping:
+
+    1. **Pass 1** — escape *all* control chars including ``\\n``/``\\r``/
+       ``\\t``.  This is correct when the model emits bare newlines
+       inside JSON string values.
+    2. **Pass 2** (fallback) — if pass 1 produces invalid JSON, retry
+       with ``skip_newlines=True``.  This handles the case where the
+       in-string tracker mis-fires on unbalanced quotes and incorrectly
+       escapes structural whitespace between JSON tokens.
+
+    If both passes fail, return the pass-1 result so downstream code
+    sees the more-commonly-correct version.
     """
+    # --- extract raw JSON substring ---
     fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
     if fenced:
-        return _fix_json_quirks(fenced.group(1))
-    start, end = text.find("{"), text.rfind("}")
-    if start != -1 and end > start:
-        return _fix_json_quirks(text[start : end + 1])
-    return text
+        raw = fenced.group(1)
+    else:
+        start, end = text.find("{"), text.rfind("}")
+        if start != -1 and end > start:
+            raw = text[start : end + 1]
+        else:
+            return text
+
+    # --- pass 1: full escaping (handles bare \n inside strings) ---
+    candidate = _fix_json_quirks(raw)
+    try:
+        json.loads(candidate)
+        return candidate
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # --- pass 2: skip newline escaping (handles tracker misfires) ---
+    candidate_no_nl = _fix_json_quirks(raw, skip_newlines=True)
+    try:
+        json.loads(candidate_no_nl)
+        return candidate_no_nl
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # Both failed; return pass-1 (more commonly correct).
+    return candidate
 
 
 def _schema_instruction(schema: type[BaseModel]) -> str:

@@ -16,6 +16,8 @@ from src.llm.client import (
     BudgetEnforcer,
     SchemaParseError,
     TokenUsage,
+    _escape_control_chars,
+    _extract_json,
     get_client,
 )
 from src.llm.token_budget import BudgetExhausted, TokenBudget
@@ -104,6 +106,83 @@ def _gemini_response(text: str, prompt: int = 7, candidates: int = 3) -> SimpleN
 
 
 MESSAGES = [{"role": "user", "content": "hello"}]
+
+
+# ---------------------------------------------------------------------------
+# JSON repair helpers
+# ---------------------------------------------------------------------------
+
+
+class TestEscapeControlChars:
+    """Unit tests for _escape_control_chars."""
+
+    def test_escapes_bare_newline_inside_string(self) -> None:
+        # Model emits a bare \n inside a JSON string value.
+        raw = '{"thought": "step one\nstep two"}'
+        result = _escape_control_chars(raw)
+        assert result == '{"thought": "step one\\u000astep two"}'
+
+    def test_preserves_structural_newline_between_tokens(self) -> None:
+        # Structural \n between JSON tokens — should NOT be touched.
+        raw = '{"a": 1}\n{"b": 2}'
+        result = _escape_control_chars(raw)
+        assert result == raw  # unchanged
+
+    def test_skip_newlines_leaves_bare_newlines_alone(self) -> None:
+        raw = '{"thought": "step one\nstep two"}'
+        result = _escape_control_chars(raw, skip_newlines=True)
+        assert result == raw  # newline left bare
+
+    def test_escapes_nul_and_bel_regardless(self) -> None:
+        raw = '{"x": "a\x00b\x07c"}'
+        result = _escape_control_chars(raw, skip_newlines=True)
+        assert "\\u0000" in result
+        assert "\\u0007" in result
+
+
+class TestExtractJsonTwoPass:
+    """The two-pass strategy in _extract_json."""
+
+    def test_bare_newline_in_string_is_fixed(self) -> None:
+        # Pass 1 should handle this: escape the \n inside the string.
+        raw = '{"thought": "line one\nline two", "val": 1}'
+        result = _extract_json(raw)
+        import json
+        parsed = json.loads(result)
+        assert parsed["thought"] == "line one\nline two"
+        assert parsed["val"] == 1
+
+    def test_structural_newlines_preserved_in_valid_json(self) -> None:
+        # Valid JSON with structural newlines between tokens must survive
+        # the two-pass pipeline intact.
+        raw = '{\n  "thought": "hello",\n  "value": 42\n}'
+        result = _extract_json(raw)
+        import json
+        parsed = json.loads(result)
+        assert parsed == {"thought": "hello", "value": 42}
+
+    def test_fallback_when_pass1_fails(self) -> None:
+        # If pass-1 (full escaping) produces invalid JSON but pass-2
+        # (skip_newlines) produces valid JSON, the fallback should kick in.
+        # We simulate this by patching _fix_json_quirks to fail on the
+        # first call and succeed on the second.
+        import json
+        from unittest.mock import patch, call
+
+        valid_json = '{"a": 1}'
+        broken = '{broken'
+        call_count = 0
+
+        def mock_fix(text, *, skip_newlines=False):
+            nonlocal call_count
+            call_count += 1
+            return broken if call_count == 1 else valid_json
+
+        with patch("src.llm.client._fix_json_quirks", side_effect=mock_fix):
+            result = _extract_json('{"a": 1}')
+
+        assert json.loads(result) == {"a": 1}
+        assert call_count == 2  # both passes were tried
 
 
 # ---------------------------------------------------------------------------
