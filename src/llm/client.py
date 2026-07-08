@@ -110,7 +110,44 @@ def _fix_json_quirks(text: str) -> str:
     text = re.sub(r"\bTrue\b", "true", text)
     text = re.sub(r"\bFalse\b", "false", text)
     text = re.sub(r"\bNone\b", "null", text)
+    # 4. Escape literal control characters inside JSON strings.
+    #    Small models often emit raw \n/\t/\r inside string values
+    #    instead of the escaped \\n/\\t/\\r that JSON requires.
+    text = _escape_control_chars(text)
     return text
+
+
+def _escape_control_chars(text: str) -> str:
+    """Replace bare control characters (U+0000-U+001F) inside JSON
+    string values with their escaped equivalents.
+
+    Structural whitespace (newlines/tabs between tokens) is left alone;
+    only characters *inside* double-quoted strings are escaped.
+    """
+    out: list[str] = []
+    in_string = False
+    escaped = False
+    for ch in text:
+        if escaped:
+            out.append(ch)
+            escaped = False
+            continue
+        if ch == "\\" and in_string:
+            out.append(ch)
+            escaped = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            out.append(ch)
+            continue
+        if in_string and ch != "\n" and ord(ch) < 0x20:
+            out.append(f"\\u{ord(ch):04x}")
+            continue
+        if in_string and ch == "\n":
+            out.append("\\n")
+            continue
+        out.append(ch)
+    return "".join(out)
 
 
 def _extract_json(text: str) -> str:

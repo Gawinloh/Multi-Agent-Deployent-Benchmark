@@ -185,9 +185,11 @@ class SingleAgent:
 
                 observation = self._registry.dispatch(tool_call, **deps)
 
-                # Strip rendered config strings from generate_config
-                # observations — the agent only needs the spec dict, and
-                # the rendered text wastes context tokens for small models.
+                # Cache the generated spec for auto-inject, then replace
+                # the observation with a short message. The full spec
+                # wastes context tokens, triggers control-char corruption
+                # when the model tries to reproduce it, and is unnecessary
+                # because auto-inject forwards it to validate/finalise.
                 if (
                     tool_call.name == "generate_config"
                     and observation.success
@@ -199,7 +201,10 @@ class SingleAgent:
                         success=True,
                         result={
                             "config_generated": True,
-                            "spec": _last_spec,
+                            "message": (
+                                "Configuration generated and cached. "
+                                "Call validate_config to deploy and test it."
+                            ),
                         },
                     )
 
