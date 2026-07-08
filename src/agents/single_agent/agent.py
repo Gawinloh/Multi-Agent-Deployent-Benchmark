@@ -23,9 +23,9 @@ from typing import Any
 import structlog
 from pydantic import BaseModel, Field
 
-from src.llm.client import BudgetEnforcer, LLMClient, SchemaParseError
+from src.llm.client import BudgetEnforcer, LLMClient
 from src.llm.token_budget import BudgetExhausted, TokenBudget
-from src.schemas.agent import AgentThought, HistoryEntry, ToolCall, ToolObservation
+from src.schemas.agent import AgentThought, HistoryEntry, ToolCall
 from src.schemas.stack import StackSpec
 from src.schemas.validator_report import ValidatorReport
 from src.tools.registry import ToolRegistry, get_default_registry
@@ -118,31 +118,7 @@ class SingleAgent:
                 messages = render_react_prompt(request, history_dicts, tools_desc)
 
                 # 2. Structured LLM call
-                try:
-                    step, _usage = self._enforcer.chat(messages, schema=AgentStep)
-                except SchemaParseError as exc:
-                    log.warning(
-                        "agent_step_parse_error",
-                        iteration=iteration,
-                        error=str(exc)[:200],
-                    )
-                    # Record as a failed observation so the next iteration
-                    # sees the error and can try again.
-                    history.append(
-                        HistoryEntry(
-                            thought=AgentThought(
-                                reasoning="LLM produced unparseable JSON",
-                                planned_next_action="retry",
-                            ),
-                            tool_call=ToolCall(name="none", args={}),
-                            observation=ToolObservation(
-                                success=False,
-                                error=f"Schema parse failure: {str(exc)[:300]}",
-                            ),
-                        )
-                    )
-                    continue
-
+                step, _usage = self._enforcer.chat(messages, schema=AgentStep)
                 thought = step.thought  # type: ignore[union-attr]
                 tool_call = step.tool_call  # type: ignore[union-attr]
                 log.info(

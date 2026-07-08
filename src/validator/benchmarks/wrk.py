@@ -10,7 +10,6 @@ specified and needs no image rebuilds.
 
 from __future__ import annotations
 
-import platform
 import re
 import subprocess
 
@@ -20,11 +19,6 @@ from src.schemas.validator_report import BenchmarkResult
 from src.validator.docker_runner import StackRunner
 
 logger = structlog.get_logger(__name__)
-
-_SKIP_ARM64 = (
-    "skipped: williamyeh/wrk image is amd64-only; "
-    "no native ARM64 build available (Apple Silicon limitation)"
-)
 
 WRK_IMAGE = "williamyeh/wrk:latest"
 
@@ -82,15 +76,7 @@ def run_wrk(
     threads: int = 2,
     connections: int = 50,
 ) -> BenchmarkResult:
-    """Benchmark nginx from a wrk sidecar on the stack's network.
-
-    Gracefully skips on ARM64 (Apple Silicon) because the
-    ``williamyeh/wrk`` image has no native build for that arch.
-    """
-    if platform.machine() in ("arm64", "aarch64"):
-        logger.info("wrk_skipped_arm64")
-        return BenchmarkResult(error_message=_SKIP_ARM64)
-
+    """Benchmark nginx from a wrk sidecar on the stack's network."""
     try:
         output, returncode = _run_sidecar(
             runner.network_name, "http://nginx:80/", duration_s, threads, connections

@@ -344,6 +344,22 @@ class TestRedisConfig:
 
 
 class TestStackSpec:
+    def test_render_compose_structure(self, stack_spec: StackSpec) -> None:
+        compose = stack_spec.render_compose()
+        for service in ("postgres:", "redis:", "nginx:"):
+            assert service in compose
+        assert "pg_isready" in compose
+        assert "redis-cli" in compose
+        assert "curl -f http://localhost/" in compose
+        assert "condition: service_healthy" in compose
+        assert "memory:" in compose and "cpus:" in compose  # resource limits
+
+    def test_resource_limits_derived_from_hardware(self, stack_spec: StackSpec) -> None:
+        compose = stack_spec.render_compose()
+        assert "memory: 4G" in compose  # postgres: 50% of 8GB
+        assert "memory: 2G" in compose  # redis: 25% of 8GB
+        assert "memory: 1G" in compose  # nginx: 12.5% of 8GB
+
     def test_invalid_requirements_rejected(self) -> None:
         with pytest.raises(ValidationError):
             StackRequirements(

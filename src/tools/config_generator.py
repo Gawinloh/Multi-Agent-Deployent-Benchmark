@@ -43,22 +43,124 @@ class GeneratedFiles:
     spec: StackSpec
 
 
+_STACKSPEC_EXAMPLE = """\
+{
+  "requirements": {
+    "workload_class": "BALANCED",
+    "expected_concurrent_users": 50,
+    "expected_data_size_gb": 10,
+    "hardware": {"ram_gb": 8, "vcpu": 4, "disk_gb": 100},
+    "compliance": "NONE",
+    "backup_required": false
+  },
+  "postgres": {
+    "memory": {
+      "shared_buffers": "2GB",
+      "effective_cache_size": "6GB",
+      "work_mem": "32MB",
+      "maintenance_work_mem": "512MB"
+    },
+    "connections": {
+      "max_connections": 200,
+      "superuser_reserved_connections": 3
+    },
+    "wal": {
+      "wal_level": "replica",
+      "checkpoint_completion_target": 0.9,
+      "max_wal_size": "1GB"
+    },
+    "security": {
+      "ssl": true,
+      "password_encryption": "scram-sha-256",
+      "log_connections": true,
+      "log_disconnections": true,
+      "ssl_min_protocol_version": "TLSv1.2"
+    },
+    "logging": {
+      "log_destination": "stderr",
+      "log_statement": "ddl",
+      "log_min_duration_statement": 1000
+    }
+  },
+  "nginx": {
+    "worker": {
+      "worker_processes": "auto",
+      "worker_connections": 1024
+    },
+    "http": {
+      "sendfile": true,
+      "tcp_nopush": true,
+      "tcp_nodelay": true,
+      "keepalive_timeout": 65,
+      "keepalive_requests": 100,
+      "gzip": true
+    },
+    "security": {
+      "server_tokens": false,
+      "autoindex": false,
+      "client_max_body_size": "10m"
+    },
+    "ssl": {
+      "protocols": ["TLSv1.2", "TLSv1.3"],
+      "ciphers": "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256",
+      "prefer_server_ciphers": true,
+      "session_cache": "shared:SSL:10m",
+      "session_timeout": "1d",
+      "stapling": true
+    }
+  },
+  "redis": {
+    "memory": {
+      "maxmemory": "512MB",
+      "maxmemory_policy": "allkeys-lru",
+      "maxmemory_samples": 5
+    },
+    "persistence": {
+      "save": ["3600 1", "300 100"],
+      "appendonly": true,
+      "appendfsync": "everysec"
+    },
+    "security": {
+      "protected_mode": true,
+      "requirepass": "change-me-strong-password",
+      "rename_commands": {"FLUSHALL": "", "CONFIG": "CONFIG_a1b2c3"}
+    },
+    "networking": {
+      "bind": ["127.0.0.1"],
+      "port": 6379,
+      "tls_port": null
+    }
+  },
+  "pg_hba": {
+    "rules": [
+      {"type": "local", "database": "all", "user": "all", "address": null, "auth_method": "peer"},
+      {"type": "hostssl", "database": "all", "user": "all", "address": "0.0.0.0/0", "auth_method": "scram-sha-256"}
+    ]
+  }
+}"""
+
 _COMPLETION_SYSTEM = (
     "You are an expert infrastructure engineer. Given partial deployment "
-    "requirements, produce a COMPLETE StackSpec JSON with sensible values "
-    "for every field. Your response must validate against the provided "
-    "JSON schema.\n\n"
-    "Tuning guidance:\n"
-    "- PostgreSQL: shared_buffers ~25% of RAM, effective_cache_size ~75%, "
-    "work_mem 16-64MB, wal_level replica, scram-sha-256 auth, ssl on, "
-    "TLSv1.2 minimum, log connections and disconnections (CIS L1)\n"
-    "- nginx: worker_processes auto, gzip on, server_tokens off, "
-    "autoindex off, TLSv1.2+TLSv1.3 protocols, prefer_server_ciphers on\n"
-    "- Redis: allkeys-lru for caches, everysec appendfsync, protected_mode "
-    "true, requirepass at least 12 chars, rename FLUSHALL and CONFIG\n"
-    "- pg_hba: peer for local, scram-sha-256 for hostssl, never use trust "
-    "for remote connections\n"
-    "- Memory sizes must be strings like '2GB', '512MB', '16kB'"
+    "requirements, produce a COMPLETE StackSpec JSON.\n\n"
+    "You MUST follow EXACTLY the structure and field names shown in the "
+    "example below. Do NOT invent new field names or flatten the nesting.\n\n"
+    "## EXAMPLE (copy this structure exactly, adjust values)\n\n"
+    + _STACKSPEC_EXAMPLE + "\n\n"
+    "## Rules\n"
+    "- Copy the EXACT field names from the example above\n"
+    "- Keep the EXACT nesting: postgres.memory.shared_buffers, NOT postgres.shared_buffers\n"
+    "- workload_class: OLTP | OLAP | CACHING_HEAVY | BALANCED\n"
+    "- compliance: NONE | GDPR_UK | HIPAA | PCI_DSS\n"
+    "- hardware must have: ram_gb (number), vcpu (integer), disk_gb (number)\n"
+    "- Memory sizes are strings: '2GB', '512MB', '16kB'\n"
+    "- log_destination is a single string: 'stderr', 'csvlog', or 'syslog'\n"
+    "- ssl.protocols is a list: ['TLSv1.2', 'TLSv1.3']\n"
+    "- redis.networking.bind is a list: ['127.0.0.1']\n"
+    "- pg_hba.rules is a list of objects with: type, database, user, address, auth_method\n"
+    "- save entries look like: '3600 1' (seconds changes)\n"
+    "- rename_commands is a dict: {'FLUSHALL': '', 'CONFIG': 'CONFIG_xxx'}\n"
+    "- keepalive_timeout is an integer (no 's' suffix)\n"
+    "- Respond with ONLY the JSON object, no prose\n"
 )
 
 
