@@ -213,6 +213,51 @@ class TestRenderFiles:
         assert "./certs/server.crt" in with_ssl
         assert "ssl_key_file" in with_ssl
 
+    def test_ssl_key_is_staged_and_installed_not_mounted_into_place(
+        self, tmp_path: Path
+    ) -> None:
+        # Regression: mounting the key straight to its final path made
+        # PostgreSQL exit with "private key file has group or world access",
+        # which reached the agent only as a compose dependency failure and
+        # cost it an entire token budget to not diagnose.
+        runner = StackRunner(run_id=fresh_run_id(), workdir=tmp_path)
+        doc = yaml.safe_load(
+            runner.render_files(make_spec(ssl=True))["docker-compose.yml"]
+        )
+        postgres = doc["services"]["postgres"]
+
+        cert_mounts = [v for v in postgres["volumes"] if "server." in v]
+        assert cert_mounts, "SSL spec must mount certs"
+        assert all("/tmp/certs/" in m for m in cert_mounts), (
+            f"certs must be staged under /tmp, got {cert_mounts}"
+        )
+        assert not any("/var/lib/postgresql/server." in m for m in cert_mounts)
+
+        entrypoint = "\n".join(postgres["entrypoint"])
+        assert "install -o postgres -g postgres -m 0600" in entrypoint
+        assert "/var/lib/postgresql/server.key" in entrypoint
+        assert "exec /usr/local/bin/docker-entrypoint.sh postgres" in entrypoint
+
+    def test_no_entrypoint_override_without_ssl(self, tmp_path: Path) -> None:
+        runner = StackRunner(run_id=fresh_run_id(), workdir=tmp_path)
+        doc = yaml.safe_load(
+            runner.render_files(make_spec(ssl=False))["docker-compose.yml"]
+        )
+        postgres = doc["services"]["postgres"]
+        assert "entrypoint" not in postgres
+        assert postgres["command"].startswith("postgres -c")
+
+    def test_generated_key_is_readable_through_the_bind_mount(
+        self, tmp_path: Path
+    ) -> None:
+        # The container copies the key as root before dropping privileges,
+        # so it must be readable on the host side of the mount.
+        runner = StackRunner(run_id=fresh_run_id(), workdir=tmp_path)
+        runner.write_files(make_spec(ssl=True))
+        key = tmp_path / "certs" / "server.key"
+        assert key.exists()
+        assert key.stat().st_mode & 0o004, "key must be readable through the mount"
+
     def test_write_files_creates_workdir_layout(self, tmp_path: Path) -> None:
         runner = StackRunner(run_id=fresh_run_id(), workdir=tmp_path / "wd")
         compose_path = runner.write_files(make_spec())

@@ -235,8 +235,17 @@ class StackRunner:
     def _generate_self_signed_certs(self) -> None:
         """Self-signed cert for postgres SSL.
 
-        The key is chmod 0640: postgres accepts a root-owned key with
-        mode <= 0640, which is what a bind mount looks like in-container.
+        Left world-readable on the host on purpose. These are throwaway
+        two-day self-signed certs in a temp directory, and the container
+        needs to be able to read them through the bind mount before its
+        entrypoint copies them into place with the strict ownership and
+        mode PostgreSQL requires (see the compose template).
+
+        An earlier version chmod 0640 here and mounted the key directly to
+        its final path, on the assumption it would appear root-owned
+        in-container. It does not, and the server refused to start with
+        "private key file has group or world access", which surfaced only
+        as a compose dependency failure.
         """
         certs_dir = self.workdir / "certs"
         certs_dir.mkdir(exist_ok=True)
@@ -253,7 +262,7 @@ class StackRunner:
         )
         if result.returncode != 0:
             raise StackStartupError(f"openssl cert generation failed: {result.stderr}")
-        key.chmod(0o640)
+        key.chmod(0o644)
 
     # ------------------------------------------------------------------
     # Lifecycle
