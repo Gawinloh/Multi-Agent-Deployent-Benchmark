@@ -129,13 +129,21 @@ def build_spec(*, ssl: bool) -> StackSpec:
         ),
         pg_hba=PostgresHbaConfig(
             rules=[
+                # The postgres entrypoint connects over the local socket
+                # during initialisation, so a local rule is mandatory or
+                # the container dies before SSL is even reached. Every
+                # agent-generated spec that deployed successfully used
+                # exactly this rule.
+                PostgresHbaRule(
+                    type="local", database="all", user="all", auth_method="peer"
+                ),
                 PostgresHbaRule(
                     type="host",
                     database="all",
                     user="all",
                     address="0.0.0.0/0",
                     auth_method="scram-sha-256",
-                )
+                ),
             ]
         ),
     )
