@@ -67,6 +67,18 @@ class LLMClient(ABC):
 
     backend_name: str = "abstract"
 
+    @property
+    def model_name(self) -> str:
+        """Model identifier actually sent to the backend.
+
+        Each concrete client resolves this once at construction time from
+        its explicit constructor argument or its backend env var
+        (``OLLAMA_MODEL``, ``ANTHROPIC_MODEL``, ...).  Recording it gives
+        run provenance the model that was really used rather than
+        whatever placeholder the CLI was invoked with.
+        """
+        return getattr(self, "_model", None) or "unknown"
+
     @abstractmethod
     def chat(
         self,
@@ -417,6 +429,12 @@ class GeminiClient(LLMClient):
         genai.configure(api_key=os.environ.get("GOOGLE_API_KEY"))
         self._model_name = model or os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
         self._genai = genai
+
+    @property
+    def model_name(self) -> str:
+        # Gemini stores the identifier under a different attribute name,
+        # so the base-class fallback does not apply here.
+        return self._model_name
 
     @staticmethod
     def _to_gemini_format(

@@ -27,7 +27,13 @@ from typing import Any
 import structlog
 import yaml
 
-from src.experiment.result_logger import RunResult, compute_scores, save
+from src.experiment.result_logger import (
+    RunResult,
+    capture_git_provenance,
+    compute_per_agent_tokens,
+    compute_scores,
+    save,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -62,16 +68,21 @@ def _run_single(
         scenario_id=scenario["id"],
         scenario_text=scenario["request"],
         architecture="single",
+        # Provisional: replaced below with the identifier the client
+        # actually resolves, since "default" says nothing about which
+        # model produced the run.
         model=model,
         max_iterations=max_iterations,
     )
     run_result.started_at = RunResult.now_iso()
+    run_result.git_commit, run_result.git_dirty = capture_git_provenance()
 
     try:
         model_kwargs: dict[str, Any] = {}
         if model and model != "default":
             model_kwargs["model"] = model
         client = get_client(**model_kwargs)
+        run_result.model = client.model_name
         budget = TokenBudget(budget_limit)
         agent = SingleAgent(client, budget, max_iterations=max_iterations)
 
@@ -111,16 +122,19 @@ def _run_multi(
         scenario_id=scenario["id"],
         scenario_text=scenario["request"],
         architecture="multi",
+        # Provisional — see _run_single.
         model=model,
         max_iterations=max_iterations,
     )
     run_result.started_at = RunResult.now_iso()
+    run_result.git_commit, run_result.git_dirty = capture_git_provenance()
 
     try:
         model_kwargs: dict[str, Any] = {}
         if model and model != "default":
             model_kwargs["model"] = model
         client = get_client(**model_kwargs)
+        run_result.model = client.model_name
         budget = TokenBudget(budget_limit)
         agent = OrchestratorAgent(
             client,
@@ -135,6 +149,9 @@ def _run_multi(
         run_result.wall_clock_s = agent_result.wall_clock_s
         run_result.termination_reason = agent_result.termination_reason
         run_result.history = agent_result.delegation_log
+        run_result.per_agent_tokens = compute_per_agent_tokens(
+            agent_result.delegation_log, agent_result.tokens_used
+        )
 
         if agent_result.final_spec:
             run_result.final_spec = agent_result.final_spec.model_dump(mode="json")

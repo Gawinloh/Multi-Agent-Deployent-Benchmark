@@ -274,6 +274,10 @@ class OrchestratorAgent:
                         "task": task_desc[:200],
                         "success": worker_result.success,
                         "summary": worker_result.summary,
+                        # Kept so the run JSON can attribute cost per agent
+                        # for the H3 analysis — see compute_per_agent_tokens.
+                        "tokens_used": worker_result.tokens_used,
+                        "iterations_used": worker_result.iterations_used,
                         "artifacts": {
                             k: (
                                 "<spec>"
