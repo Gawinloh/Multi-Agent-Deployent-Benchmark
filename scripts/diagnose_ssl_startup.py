@@ -14,15 +14,21 @@ Usage::
 from __future__ import annotations
 
 import sys
+import uuid
+from pathlib import Path
 
-from src.schemas.nginx import (
+# Run directly (python scripts/diagnose_ssl_startup.py) the repo root is not
+# on sys.path, unlike under pytest, which gets it from pyproject's pythonpath.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from src.schemas.nginx import (  # noqa: E402
     NginxConfig,
     NginxHttpParams,
     NginxSecurityParams,
     NginxSSLParams,
     NginxWorkerParams,
 )
-from src.schemas.postgres import (
+from src.schemas.postgres import (  # noqa: E402
     PostgresConfig,
     PostgresConnectionParams,
     PostgresHbaConfig,
@@ -32,14 +38,14 @@ from src.schemas.postgres import (
     PostgresSecurityParams,
     PostgresWALParams,
 )
-from src.schemas.redis import (
+from src.schemas.redis import (  # noqa: E402
     RedisConfig,
     RedisMemoryParams,
     RedisNetworkingParams,
     RedisPersistenceParams,
     RedisSecurityParams,
 )
-from src.schemas.stack import (
+from src.schemas.stack import (  # noqa: E402
     ComplianceProfile,
     HardwareConstraints,
     StackRequirements,
@@ -139,7 +145,7 @@ def attempt(*, ssl: bool) -> bool:
     """Deploy once and report. Returns True if the stack came up."""
     label = "ssl=True" if ssl else "ssl=False"
     print(f"\n{'=' * 70}\n  {label}\n{'=' * 70}")
-    runner = StackRunner()
+    runner = StackRunner(run_id=f"diag{'ssl' if ssl else 'nossl'}{uuid.uuid4().hex[:6]}")
     try:
         runner.up(build_spec(ssl=ssl))
         print(f"  STACK CAME UP OK ({label})")
@@ -153,6 +159,10 @@ def attempt(*, ssl: bool) -> bool:
             print(f"\n  ---- {service} container log (last 25 lines) ----")
             for line in body.splitlines()[-25:]:
                 print(f"    {line}")
+        return False
+    except Exception as exc:  # noqa: BLE001 — a diagnostic must not traceback
+        print(f"  UNEXPECTED ERROR ({label}): {type(exc).__name__}: {exc}")
+        print("  (is the Docker daemon running, and is openssl on PATH?)")
         return False
     finally:
         try:
