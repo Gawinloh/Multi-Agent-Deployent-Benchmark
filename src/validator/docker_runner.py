@@ -40,6 +40,17 @@ SERVICES = ("postgres", "redis", "nginx")
 
 _COMPOSE_TIMEOUT_S = 300
 
+#: Share of the Docker daemon's memory the three containers may request
+#: in total. The remainder covers daemon overhead and the page cache.
+_HOST_MEMORY_HEADROOM = 0.75
+
+#: Floors below which a container will not start reliably.
+_MIN_CONTAINER_MEMORY_MB = {
+    "pg_mem_mb": 512,
+    "redis_mem_mb": 256,
+    "nginx_mem_mb": 128,
+}
+
 
 @dataclass(frozen=True)
 class CommandResult:
@@ -108,6 +119,55 @@ class StackRunner:
     # Rendering
     # ------------------------------------------------------------------
 
+    def _host_memory_mb(self) -> int | None:
+        """Total memory available to the Docker daemon, in MB.
+
+        Returns ``None`` when the daemon cannot be queried, in which case
+        no clamping is applied.
+        """
+        try:
+            import docker
+
+            info = docker.from_env().info()
+            total = info.get("MemTotal")
+            return int(total) // (1024 * 1024) if total else None
+        except Exception as exc:  # noqa: BLE001 — clamping is best effort
+            self._log.debug("host_memory_probe_failed", error=str(exc)[:120])
+            return None
+
+    def _clamp_to_host(self, limits_mb: dict[str, int]) -> dict[str, int]:
+        """Scale container memory limits down to fit the Docker host.
+
+        Scenarios describe hypothetical hosts that may be larger than the
+        machine running the experiment. Requesting more memory than the
+        daemon has causes PostgreSQL to exit during startup, which the
+        agent then misreads as a configuration fault and burns its budget
+        chasing. Limits are therefore scaled proportionally to fit within
+        ``_HOST_MEMORY_HEADROOM`` of the daemon's total, and the clamp is
+        logged so the deviation is visible in the run record.
+        """
+        host_mb = self._host_memory_mb()
+        if host_mb is None:
+            return limits_mb
+        budget = int(host_mb * _HOST_MEMORY_HEADROOM)
+        requested = sum(limits_mb.values())
+        if requested <= budget:
+            return limits_mb
+        factor = budget / requested
+        clamped = {
+            key: max(int(value * factor), _MIN_CONTAINER_MEMORY_MB[key])
+            for key, value in limits_mb.items()
+        }
+        self._log.warning(
+            "container_memory_clamped",
+            host_mb=host_mb,
+            requested_mb=requested,
+            budget_mb=budget,
+            before=limits_mb,
+            after=clamped,
+        )
+        return clamped
+
     def _template_context(self, spec: StackSpec) -> dict[str, Any]:
         hw = spec.requirements.hardware
         ram_mb = hw.ram_gb * 1024
@@ -132,9 +192,13 @@ class StackRunner:
             "postgres_ssl": spec.postgres.security.ssl,
             "postgres_command": postgres_command,
             "redis_health_cmd": redis_health_cmd,
-            "pg_mem_mb": int(max(ram_mb * 0.5, 512)),
-            "redis_mem_mb": int(max(ram_mb * 0.25, 256)),
-            "nginx_mem_mb": int(max(ram_mb * 0.125, 128)),
+            **self._clamp_to_host(
+                {
+                    "pg_mem_mb": int(max(ram_mb * 0.5, 512)),
+                    "redis_mem_mb": int(max(ram_mb * 0.25, 256)),
+                    "nginx_mem_mb": int(max(ram_mb * 0.125, 128)),
+                }
+            ),
             "pg_cpus": round(max(hw.vcpu * 0.5, 0.5), 2),
             "redis_cpus": round(max(hw.vcpu * 0.25, 0.25), 2),
             "nginx_cpus": round(max(hw.vcpu * 0.25, 0.25), 2),

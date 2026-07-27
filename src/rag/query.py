@@ -32,6 +32,24 @@ logger = structlog.get_logger(__name__)
 #: RRF dampening constant (Cormack et al. 2009 use 60).
 RRF_K = 60
 
+#: Service-name aliases the LLM produces that do not match the corpus.
+#:
+#: Corpus chunks are tagged ``postgres``, ``nginx`` or ``redis``, but models
+#: routinely ask for ``postgresql`` or ``PostgreSQL``. An unrecognised
+#: filter previously matched no chunks, returned zero results, and left the
+#: agent retrying the same failing query until its budget ran out. Filters
+#: are therefore normalised, and an unknown one degrades to an unfiltered
+#: search rather than an empty one.
+_SERVICE_ALIASES: dict[str, str] = {
+    "postgres": "postgres",
+    "postgresql": "postgres",
+    "postgre": "postgres",
+    "psql": "postgres",
+    "pg": "postgres",
+    "redis": "redis",
+    "nginx": "nginx",
+}
+
 
 @dataclass(frozen=True)
 class RetrievedChunk:
@@ -63,6 +81,9 @@ class HybridRetriever:
         self._chunks_by_id = {chunk["chunk_id"]: chunk for chunk in self._chunks}
         self._collection: Any = None
         self._encoder: Any = None
+        self._known_services = {
+            chunk["service"] for chunk in self._chunks if chunk.get("service")
+        }
         logger.info(
             "hybrid_retriever_loaded",
             index_dir=str(self._index_dir),
@@ -111,10 +132,32 @@ class HybridRetriever:
     # Fusion
     # ------------------------------------------------------------------
 
+    def _normalise_service(self, service_filter: str | None) -> str | None:
+        """Map an LLM-supplied service name onto a corpus service tag.
+
+        Returns ``None`` (unfiltered search) when the name cannot be
+        resolved, because an empty result set gives the agent nothing to
+        act on and it tends to retry the identical query until the budget
+        is gone.
+        """
+        if service_filter is None:
+            return None
+        candidate = _SERVICE_ALIASES.get(service_filter.strip().lower())
+        if candidate in self._known_services:
+            return candidate
+        logger.warning(
+            "rag_service_filter_unrecognised",
+            requested=service_filter,
+            known=sorted(self._known_services),
+            action="searching_unfiltered",
+        )
+        return None
+
     def search(
         self, query: str, k: int = 5, service_filter: str | None = None
     ) -> list[RetrievedChunk]:
         """Top-k chunks by reciprocal-rank-fused hybrid score."""
+        service_filter = self._normalise_service(service_filter)
         fetch = k * 3
         ranked_lists = [
             self._bm25_search(query, fetch, service_filter),

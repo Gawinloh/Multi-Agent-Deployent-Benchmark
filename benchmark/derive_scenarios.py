@@ -41,6 +41,18 @@ GB = 1024**3
 
 SCENARIO_DIR = Path(__file__).parent / "scenarios"
 
+#: Largest host a scenario may claim, in GB.
+#:
+#: The validator deploys each generated configuration to a real Docker
+#: daemon, which on the experiment machine has 8 GB. A scenario claiming
+#: more leads the agent to size ``shared_buffers`` beyond what PostgreSQL
+#: can allocate; the container then exits during startup and the agent
+#: misreads the failure as a configuration fault, exhausting its budget on
+#: a problem that does not exist. The hardware envelope is therefore
+#: bounded by the test machine, and that bound is a stated limitation of
+#: the study rather than a design choice.
+MAX_DEPLOYABLE_RAM_GB = 8
+
 
 # ---------------------------------------------------------------------------
 # Scenario definitions
@@ -85,19 +97,18 @@ SCENARIOS: list[Scenario] = [
         request=(
             "I need a small dev web stack for an internal tool. Approximately 5 "
             "concurrent\ndevelopers will use it. The Postgres database will hold "
-            "about 5 GB of test data.\nWe're running on a single host with 8 GB "
-            "RAM and 4 vCPU. No production traffic,\nno compliance constraints, "
+            "about 5 GB of test data.\nWe're running on a single host with 4 GB "
+            "RAM and 2 vCPU. No production traffic,\nno compliance constraints, "
             "but use sane security defaults (TLS where appropriate,\nno default "
             "passwords).\n"
         ),
         workload_class="BALANCED",
         compliance="NONE",
-        ram_gb=8,
-        vcpu=4,
+        ram_gb=4,
+        vcpu=2,
         concurrent_users=5,
         data_size_gb=5,
-        rationale="Baseline smoke scenario; smallest hardware envelope in the set.",
-        # Path is referenced by the runner docstring and methodology docs.
+        rationale="Baseline smoke scenario; mid-range hardware envelope.",
         filename="smoke_test",
     ),
     Scenario(
@@ -105,18 +116,18 @@ SCENARIOS: list[Scenario] = [
         description="Small production API, transactional workload, no compliance",
         request=(
             "We're deploying the backend for a customer-facing booking API. Expect "
-            "around\n50 concurrent users at peak, mostly short read-write "
-            "transactions. The database\nwill hold roughly 20 GB. The host has 16 "
-            "GB RAM and 8 vCPU. This is real\nproduction traffic so it needs to be "
+            "around\n25 concurrent users at peak, mostly short read-write "
+            "transactions. The database\nwill hold roughly 10 GB. The host has 4 "
+            "GB RAM and 2 vCPU. This is real\nproduction traffic so it needs to be "
             "secured properly, but we're not under any\nspecific regulatory "
             "regime.\n"
         ),
         workload_class="OLTP",
         compliance="NONE",
-        ram_gb=16,
-        vcpu=8,
-        concurrent_users=50,
-        data_size_gb=20,
+        ram_gb=4,
+        vcpu=2,
+        concurrent_users=25,
+        data_size_gb=10,
         backup_required=True,
         rationale="Entry-level production OLTP; isolates workload class from compliance.",
     ),
@@ -125,57 +136,57 @@ SCENARIOS: list[Scenario] = [
         description="EU customer data platform, transactional, UK GDPR",
         request=(
             "We run a SaaS platform for UK and EU customers and need the data tier "
-            "for it.\nAround 200 concurrent users, transactional access patterns, "
-            "about 100 GB of\ncustomer records. Host is 32 GB RAM, 8 vCPU. We hold "
+            "for it.\nAround 60 concurrent users, transactional access patterns, "
+            "about 40 GB of\ncustomer records. Host is 8 GB RAM, 4 vCPU. We hold "
             "personal data on EU\nresidents, so we're subject to UK GDPR. We need "
             "encryption in transit and\nenough audit logging to demonstrate access "
             "control. Nightly backups required.\n"
         ),
         workload_class="OLTP",
         compliance="GDPR_UK",
-        ram_gb=32,
-        vcpu=8,
-        concurrent_users=200,
-        data_size_gb=100,
+        ram_gb=8,
+        vcpu=4,
+        concurrent_users=60,
+        data_size_gb=40,
         backup_required=True,
         rationale="Same workload class as 002 with a compliance profile added.",
     ),
     Scenario(
         id="scenario_004_olap_large",
-        description="Analytics warehouse on generous hardware, no compliance",
+        description="Analytics warehouse on the largest available host, no compliance",
         request=(
-            "I need a reporting warehouse for our internal BI team. Only about 15 "
+            "I need a reporting warehouse for our internal BI team. Only about 10 "
             "analysts\nuse it, but their queries are large aggregations scanning "
-            "most of a 500 GB\ndataset. The box is well specified: 64 GB RAM and 16 "
-            "vCPU. Nothing regulated,\nit's all internal operational data. Batch "
-            "loads run overnight.\n"
+            "most of a 120 GB\ndataset. The box is 8 GB RAM and 4 vCPU. Nothing "
+            "regulated, it's all internal\noperational data. Batch loads run "
+            "overnight.\n"
         ),
         workload_class="OLAP",
         compliance="NONE",
-        ram_gb=64,
-        vcpu=16,
-        concurrent_users=15,
-        data_size_gb=500,
+        ram_gb=8,
+        vcpu=4,
+        concurrent_users=10,
+        data_size_gb=120,
         backup_required=True,
-        rationale="Analytical extreme: few connections, large working set, generous RAM.",
+        rationale="Analytical extreme: few connections, working set far exceeding RAM.",
     ),
     Scenario(
         id="scenario_005_cache_heavy",
         description="Session and cache dominated workload, no compliance",
         request=(
             "We're standing up the tier behind a high-traffic content site. Roughly "
-            "500\nconcurrent users. Most reads should be served from cache; "
-            "Postgres holds only\nabout 10 GB of canonical content and gets "
-            "relatively little traffic. Host is\n16 GB RAM, 8 vCPU. Cache hit rate "
+            "200\nconcurrent users. Most reads should be served from cache; "
+            "Postgres holds only\nabout 8 GB of canonical content and gets "
+            "relatively little traffic. Host is\n6 GB RAM, 4 vCPU. Cache hit rate "
             "matters more than durability for the cached\ndata itself. Standard "
             "security hygiene please.\n"
         ),
         workload_class="CACHING_HEAVY",
         compliance="NONE",
-        ram_gb=16,
-        vcpu=8,
-        concurrent_users=500,
-        data_size_gb=10,
+        ram_gb=6,
+        vcpu=4,
+        concurrent_users=200,
+        data_size_gb=8,
         rationale="Cache-dominant; shifts the memory split away from Postgres.",
     ),
     Scenario(
@@ -183,18 +194,18 @@ SCENARIOS: list[Scenario] = [
         description="Clinical records system, mixed workload, HIPAA",
         request=(
             "This is the data tier for a clinical records application used by about "
-            "40\nclinicians concurrently. Mixed read and write, roughly 80 GB of "
-            "patient\nrecords. Host has 32 GB RAM and 8 vCPU. We handle protected "
+            "30\nclinicians concurrently. Mixed read and write, roughly 30 GB of "
+            "patient\nrecords. Host has 6 GB RAM and 4 vCPU. We handle protected "
             "health\ninformation and must satisfy HIPAA: encryption in transit, "
             "strong\nauthentication, and audit logging of access. Backups are "
             "mandatory.\n"
         ),
         workload_class="BALANCED",
         compliance="HIPAA",
-        ram_gb=32,
-        vcpu=8,
-        concurrent_users=40,
-        data_size_gb=80,
+        ram_gb=6,
+        vcpu=4,
+        concurrent_users=30,
+        data_size_gb=30,
         backup_required=True,
         rationale="Strictest logging profile at a moderate hardware envelope.",
     ),
@@ -202,38 +213,38 @@ SCENARIOS: list[Scenario] = [
         id="scenario_007_oltp_pci",
         description="Payment processing, high concurrency, PCI DSS",
         request=(
-            "We need the data tier for a payment processing service. Around 300 "
-            "concurrent\nconnections, short transactions, about 60 GB of "
-            "transaction history. Host is\n32 GB RAM with 16 vCPU. We are in PCI "
+            "We need the data tier for a payment processing service. Around 100 "
+            "concurrent\nconnections, short transactions, about 25 GB of "
+            "transaction history. Host is\n8 GB RAM with 4 vCPU. We are in PCI "
             "DSS scope, so cardholder data must be\nencrypted in transit with "
             "current TLS, no default credentials anywhere, and\naccess must be "
             "logged. Backups required.\n"
         ),
         workload_class="OLTP",
         compliance="PCI_DSS",
-        ram_gb=32,
-        vcpu=16,
-        concurrent_users=300,
-        data_size_gb=60,
+        ram_gb=8,
+        vcpu=4,
+        concurrent_users=100,
+        data_size_gb=25,
         backup_required=True,
-        rationale="Highest concurrency under the strictest transit-encryption profile.",
+        rationale="Highest transactional concurrency under the strictest profile.",
     ),
     Scenario(
         id="scenario_008_olap_gdpr",
         description="EU analytics estate, analytical workload, UK GDPR",
         request=(
-            "Reporting estate over EU customer behaviour data. About 10 analysts, "
-            "very\nlarge scans over roughly 800 GB. Host is 64 GB RAM, 16 vCPU. The "
+            "Reporting estate over EU customer behaviour data. About 8 analysts, "
+            "very\nlarge scans over roughly 150 GB. Host is 8 GB RAM, 4 vCPU. The "
             "dataset\nincludes personal data on EU residents so UK GDPR applies: we "
             "need transit\nencryption and access logging. Loads are batch, "
             "overnight.\n"
         ),
         workload_class="OLAP",
         compliance="GDPR_UK",
-        ram_gb=64,
-        vcpu=16,
-        concurrent_users=10,
-        data_size_gb=800,
+        ram_gb=8,
+        vcpu=4,
+        concurrent_users=8,
+        data_size_gb=150,
         backup_required=True,
         rationale="Crosses the analytical extreme with a compliance profile.",
     ),
@@ -241,18 +252,18 @@ SCENARIOS: list[Scenario] = [
         id="scenario_009_cache_constrained",
         description="Cache-heavy workload on deliberately tight hardware",
         request=(
-            "High-read internal portal, about 200 concurrent users, but we only "
-            "have a\nsmall box available: 8 GB RAM and 4 vCPU. Postgres holds "
-            "around 5 GB.\nWe want aggressive caching to keep the database load "
+            "High-read internal portal, about 80 concurrent users, but we only "
+            "have a\nvery small box available: 2 GB RAM and 2 vCPU. Postgres holds "
+            "around 3 GB.\nWe want aggressive caching to keep the database load "
             "down. Nothing\nregulated. Be realistic about what fits in the memory "
             "available.\n"
         ),
         workload_class="CACHING_HEAVY",
         compliance="NONE",
-        ram_gb=8,
-        vcpu=4,
-        concurrent_users=200,
-        data_size_gb=5,
+        ram_gb=2,
+        vcpu=2,
+        concurrent_users=80,
+        data_size_gb=3,
         rationale=(
             "Tension case: concurrency and cache ambitions exceed what the host "
             "comfortably holds, so the memory budget must be split carefully."
@@ -260,19 +271,19 @@ SCENARIOS: list[Scenario] = [
     ),
     Scenario(
         id="scenario_010_balanced_large",
-        description="Mixed workload with generous headroom, no compliance",
+        description="Mixed workload with the most headroom available, no compliance",
         request=(
-            "General purpose application data tier, roughly 100 concurrent users "
-            "and a\nmix of reads and writes over about 200 GB. We have a large host "
-            "available:\n128 GB RAM and 32 vCPU. No regulatory constraints, but "
+            "General purpose application data tier, roughly 50 concurrent users "
+            "and a\nmix of reads and writes over about 60 GB. We have the larger "
+            "host available:\n8 GB RAM and 4 vCPU. No regulatory constraints, but "
             "follow good security\npractice. Backups nightly.\n"
         ),
         workload_class="BALANCED",
         compliance="NONE",
-        ram_gb=128,
-        vcpu=32,
-        concurrent_users=100,
-        data_size_gb=200,
+        ram_gb=8,
+        vcpu=4,
+        concurrent_users=50,
+        data_size_gb=60,
         backup_required=True,
         rationale="Largest hardware envelope; tests whether tuning scales with RAM.",
     ),
@@ -280,18 +291,18 @@ SCENARIOS: list[Scenario] = [
         id="scenario_011_oltp_hipaa_constrained",
         description="Transactional HIPAA workload on constrained hardware",
         request=(
-            "Small clinical scheduling system, about 80 concurrent users, 40 GB of "
-            "data.\nThe only host we have is 16 GB RAM with 4 vCPU. It still "
+            "Small clinical scheduling system, about 40 concurrent users, 15 GB of "
+            "data.\nThe only host we have is 2 GB RAM with 2 vCPU. It still "
             "handles protected\nhealth information so HIPAA applies in full: "
             "encryption in transit, strong\npassword hashing, and audit logging of "
             "connections. Backups required.\n"
         ),
         workload_class="OLTP",
         compliance="HIPAA",
-        ram_gb=16,
-        vcpu=4,
-        concurrent_users=80,
-        data_size_gb=40,
+        ram_gb=2,
+        vcpu=2,
+        concurrent_users=40,
+        data_size_gb=15,
         backup_required=True,
         rationale=(
             "Tension case: strict compliance overhead on hardware that cannot "
@@ -302,18 +313,18 @@ SCENARIOS: list[Scenario] = [
         id="scenario_012_olap_pci",
         description="Reporting over cardholder data, analytical, PCI DSS",
         request=(
-            "Reporting database over historical card transaction data. About 25 "
-            "analysts\nrunning large aggregate queries across roughly 400 GB. Host "
-            "is 64 GB RAM,\n16 vCPU. This is in PCI DSS scope: current TLS in "
+            "Reporting database over historical card transaction data. About 15 "
+            "analysts\nrunning large aggregate queries across roughly 100 GB. Host "
+            "is 6 GB RAM,\n4 vCPU. This is in PCI DSS scope: current TLS in "
             "transit, no default\ncredentials, access logging. Batch loads "
             "overnight, backups required.\n"
         ),
         workload_class="OLAP",
         compliance="PCI_DSS",
-        ram_gb=64,
-        vcpu=16,
-        concurrent_users=25,
-        data_size_gb=400,
+        ram_gb=6,
+        vcpu=4,
+        concurrent_users=15,
+        data_size_gb=100,
         backup_required=True,
         rationale="Completes the workload x compliance coverage grid.",
     ),

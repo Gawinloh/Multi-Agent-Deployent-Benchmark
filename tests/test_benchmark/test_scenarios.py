@@ -13,7 +13,12 @@ from typing import Any
 
 import pytest
 
-from benchmark.derive_scenarios import SCENARIOS, build_document, format_size
+from benchmark.derive_scenarios import (
+    MAX_DEPLOYABLE_RAM_GB,
+    SCENARIOS,
+    build_document,
+    format_size,
+)
 from src.experiment.result_logger import (
     GROUND_TRUTH_PARAMETER_MAP,
     parse_size,
@@ -118,9 +123,32 @@ class TestCoverage:
         assert set(counts) == {"NONE", "GDPR_UK", "HIPAA", "PCI_DSS"}
         assert all(v >= 2 for v in counts.values()), counts
 
-    def test_hardware_envelope_spans_an_order_of_magnitude(self) -> None:
+    def test_hardware_envelope_varies(self) -> None:
         rams = [s.ram_gb for s in SCENARIOS]
-        assert max(rams) / min(rams) >= 10
+        assert max(rams) / min(rams) >= 4, "hardware must still vary meaningfully"
+
+    def test_no_scenario_exceeds_the_test_host(self) -> None:
+        # Scenarios are deployed to a Docker VM with 8 GB. A larger claimed
+        # host makes the agent size shared_buffers beyond what PostgreSQL
+        # can allocate, so the container exits during startup and the run
+        # measures a harness limit rather than agent behaviour.
+        for scenario in SCENARIOS:
+            assert scenario.ram_gb <= MAX_DEPLOYABLE_RAM_GB, (
+                f"{scenario.id} claims {scenario.ram_gb} GB, above the "
+                f"{MAX_DEPLOYABLE_RAM_GB} GB the test host can deploy"
+            )
+
+    def test_upper_shared_buffers_bound_fits_the_test_host(self) -> None:
+        from benchmark.derive_scenarios import derive_ground_truth
+
+        for scenario in SCENARIOS:
+            upper = derive_ground_truth(scenario)["expected_postgres"][
+                "shared_buffers_range"
+            ][1]
+            assert parse_size(upper) <= 3 * 1024**3, (
+                f"{scenario.id} permits shared_buffers up to {upper}, which "
+                "risks a PostgreSQL startup failure on the test host"
+            )
 
     def test_requests_do_not_leak_expected_values(self) -> None:
         # The prompt must state the situation, not the answer, or the task

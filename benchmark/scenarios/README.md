@@ -64,18 +64,18 @@ if any shipped scenario contains one.
 
 | File | ID | Workload | Compliance | Host | Users |
 |---|---|---|---|---|---|
-| `smoke_test.yaml` | `smoke_test_001` | BALANCED | NONE | 8 GB / 4 vCPU | 5 |
-| `scenario_002_oltp_small.yaml` | `scenario_002_oltp_small` | OLTP | NONE | 16 GB / 8 vCPU | 50 |
-| `scenario_003_oltp_gdpr.yaml` | `scenario_003_oltp_gdpr` | OLTP | GDPR_UK | 32 GB / 8 vCPU | 200 |
-| `scenario_004_olap_large.yaml` | `scenario_004_olap_large` | OLAP | NONE | 64 GB / 16 vCPU | 15 |
-| `scenario_005_cache_heavy.yaml` | `scenario_005_cache_heavy` | CACHING_HEAVY | NONE | 16 GB / 8 vCPU | 500 |
-| `scenario_006_balanced_hipaa.yaml` | `scenario_006_balanced_hipaa` | BALANCED | HIPAA | 32 GB / 8 vCPU | 40 |
-| `scenario_007_oltp_pci.yaml` | `scenario_007_oltp_pci` | OLTP | PCI_DSS | 32 GB / 16 vCPU | 300 |
-| `scenario_008_olap_gdpr.yaml` | `scenario_008_olap_gdpr` | OLAP | GDPR_UK | 64 GB / 16 vCPU | 10 |
-| `scenario_009_cache_constrained.yaml` | `scenario_009_cache_constrained` | CACHING_HEAVY | NONE | 8 GB / 4 vCPU | 200 |
-| `scenario_010_balanced_large.yaml` | `scenario_010_balanced_large` | BALANCED | NONE | 128 GB / 32 vCPU | 100 |
-| `scenario_011_oltp_hipaa_constrained.yaml` | `scenario_011_oltp_hipaa_constrained` | OLTP | HIPAA | 16 GB / 4 vCPU | 80 |
-| `scenario_012_olap_pci.yaml` | `scenario_012_olap_pci` | OLAP | PCI_DSS | 64 GB / 16 vCPU | 25 |
+| `smoke_test.yaml` | `smoke_test_001` | BALANCED | NONE | 4 GB / 2 vCPU | 5 |
+| `scenario_002_oltp_small.yaml` | `scenario_002_oltp_small` | OLTP | NONE | 4 GB / 2 vCPU | 25 |
+| `scenario_003_oltp_gdpr.yaml` | `scenario_003_oltp_gdpr` | OLTP | GDPR_UK | 8 GB / 4 vCPU | 60 |
+| `scenario_004_olap_large.yaml` | `scenario_004_olap_large` | OLAP | NONE | 8 GB / 4 vCPU | 10 |
+| `scenario_005_cache_heavy.yaml` | `scenario_005_cache_heavy` | CACHING_HEAVY | NONE | 6 GB / 4 vCPU | 200 |
+| `scenario_006_balanced_hipaa.yaml` | `scenario_006_balanced_hipaa` | BALANCED | HIPAA | 6 GB / 4 vCPU | 30 |
+| `scenario_007_oltp_pci.yaml` | `scenario_007_oltp_pci` | OLTP | PCI_DSS | 8 GB / 4 vCPU | 100 |
+| `scenario_008_olap_gdpr.yaml` | `scenario_008_olap_gdpr` | OLAP | GDPR_UK | 8 GB / 4 vCPU | 8 |
+| `scenario_009_cache_constrained.yaml` | `scenario_009_cache_constrained` | CACHING_HEAVY | NONE | 2 GB / 2 vCPU | 80 |
+| `scenario_010_balanced_large.yaml` | `scenario_010_balanced_large` | BALANCED | NONE | 8 GB / 4 vCPU | 50 |
+| `scenario_011_oltp_hipaa_constrained.yaml` | `scenario_011_oltp_hipaa_constrained` | OLTP | HIPAA | 2 GB / 2 vCPU | 40 |
+| `scenario_012_olap_pci.yaml` | `scenario_012_olap_pci` | OLAP | PCI_DSS | 6 GB / 4 vCPU | 15 |
 
 Scenarios 009 and 011 are deliberate tension cases where the stated workload
 does not fit the host comfortably.
