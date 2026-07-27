@@ -240,12 +240,19 @@ def main(argv: list[str] | None = None) -> None:
     print(f"Scenario: {scenario['id']}  |  Runs: {len(results)}")
     print(f"{'='*60}")
     for r in results:
+        # parameter_details is several hundred lines per run and lives in
+        # the JSON; printing it here would bury the summary during a batch.
+        summary_scores = {
+            k: (round(v, 3) if isinstance(v, float) else v)
+            for k, v in r.scores.items()
+            if not isinstance(v, (list, dict))
+        }
         print(
             f"  {r.run_id}  "
             f"reason={r.termination_reason:<20s}  "
             f"tokens={r.tokens_used:>7d}  "
             f"time={r.wall_clock_s:.1f}s  "
-            f"scores={r.scores}"
+            f"scores={summary_scores}"
         )
     print()
 
