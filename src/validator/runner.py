@@ -141,7 +141,21 @@ def validate_config(spec: StackSpec, budget_seconds: int = 120) -> ValidatorRepo
         try:
             runner.up(spec)
         except StackStartupError as exc:
-            log.warning("validation_startup_failed", error=str(exc))
+            # exc.logs carries each container's own stderr. Without it the
+            # warning shows only compose's "dependency failed to start",
+            # which says nothing about *why* the service died, and the agent
+            # is left to guess at the cause.
+            log.warning(
+                "validation_startup_failed",
+                error=str(exc),
+                **{
+                    f"{svc}_log_tail": "\n".join(
+                        text.strip().splitlines()[-15:]
+                    )
+                    for svc, text in (exc.logs or {}).items()
+                    if text and text.strip()
+                },
+            )
             return _startup_failure_report(runner, exc)
 
         smoke = _run_smoke_tests(runner, spec)
