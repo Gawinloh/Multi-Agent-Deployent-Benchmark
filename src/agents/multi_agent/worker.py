@@ -16,6 +16,7 @@ import time
 from typing import Any
 
 import structlog
+from pydantic import ValidationError
 
 from src.agents.single_agent.agent import AgentStep
 from src.llm.client import BudgetEnforcer, LLMClient, SchemaParseError
@@ -112,7 +113,29 @@ class WorkerAgent:
         _last_spec: dict[str, Any] | None = (
             context.get("last_spec") if context else None
         )
+
+        # The orchestrator serialises the most recent validator report into
+        # context, but this previously started as None and was only ever
+        # assigned from the worker's *own* validate_config call, so an
+        # inbound report was discarded. A worker asked to fix validation
+        # failures could not see what had failed and had to rediscover it.
         last_report: ValidatorReport | None = None
+        if context and context.get("last_report") is not None:
+            try:
+                last_report = ValidatorReport.model_validate(
+                    context["last_report"]
+                )
+            except ValidationError:
+                last_report = None
+
+        # Surfaced through the task rather than the prompt template, so the
+        # worker's instructions are unchanged and only the information it
+        # was already meant to receive is added.
+        if last_report is not None:
+            task = (
+                f"{task}\n\nMost recent validation result: "
+                f"{last_report.summary()}"
+            )
 
         try:
             for iteration in range(1, self._max_iterations + 1):

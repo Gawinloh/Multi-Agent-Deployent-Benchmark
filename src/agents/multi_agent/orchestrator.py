@@ -98,6 +98,12 @@ class OrchestratorAgent:
         # Shared state flowing between workers via orchestrator
         _last_spec: dict[str, Any] | None = None
         _last_report: dict[str, Any] | None = None
+        # The security worker is advisory: its findings exist only in its
+        # returned summary, which was recorded in delegation_history and
+        # never passed on. Delegations of the form "apply the security
+        # worker's recommendations" therefore reached the config worker
+        # without them, and it re-derived the advice through query_rag.
+        _last_security_summary: str | None = None
         all_worker_history: list[HistoryEntry] = []
 
         try:
@@ -234,6 +240,17 @@ class OrchestratorAgent:
                             task_desc += (
                                 f"\n\nCIS failures to address: {failure_summary}"
                             )
+                    if (
+                        target == WorkerRole.CONFIG
+                        and _last_security_summary is not None
+                    ):
+                        # Carry the advice itself, not just the instruction
+                        # to apply it, so the config worker does not have to
+                        # rediscover it through the RAG index.
+                        task_desc += (
+                            "\n\nSecurity worker recommendations to apply: "
+                            f"{_last_security_summary}"
+                        )
 
                     log.info(
                         "orchestrator_delegating",
@@ -255,6 +272,12 @@ class OrchestratorAgent:
                     )
 
                     # 5. Update shared state from worker artifacts
+                    if (
+                        target == WorkerRole.SECURITY
+                        and worker_result.success
+                        and worker_result.summary
+                    ):
+                        _last_security_summary = worker_result.summary
                     if "last_spec" in worker_result.artifacts:
                         _last_spec = worker_result.artifacts["last_spec"]
                     if "validator_report" in worker_result.artifacts:
