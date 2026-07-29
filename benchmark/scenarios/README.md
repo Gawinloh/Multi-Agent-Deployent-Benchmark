@@ -51,6 +51,25 @@ if any shipped scenario contains one.
 `expected_cis_minimum_pass_rate` is a lower-bound threshold reported alongside
 `cis_pass_rate`; it is not part of the correctness fraction.
 
+It is compared against **`cis_pass_rate_actionable`**, not the raw
+`cis_pass_rate`. Six of the 32 CIS controls cannot be satisfied by any
+specification, because the agent-facing schema has no field for them — three
+nginx `add_header` controls, the HTTP-to-HTTPS redirect (the renderer hardcodes
+the server block), pgAudit (absent from the `postgres:16` image), and
+`statement_timeout`. They are listed with reasons in
+`src.validator.cis_checks.UNREACHABLE_CONTROLS` and excluded from the actionable
+denominator, leaving 26.
+
+Both rates are recorded in every run JSON. `cis_pass_rate` is kept for
+transparency; `cis_pass_rate_actionable` is the one to report, because a
+failure there is evidence about the agent rather than about the harness.
+
+Two controls that no pilot run passed are deliberately **kept in scope**, since
+a control that is merely unused is a finding rather than a defect:
+`postgres 3.1` (`listen_addresses` is a schema field, and `'0.0.0.0'` both
+passes the check and preserves connectivity) and `redis 3.1` (`rename_commands`
+is a schema field and is rendered).
+
 ## Scoring semantics
 
 - A parameter absent from `final_spec` counts as a **failure**.

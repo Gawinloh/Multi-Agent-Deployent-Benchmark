@@ -101,15 +101,22 @@ class PostgresConfig(BaseModel):
             f"{self.connections.superuser_reserved_connections}",
             "",
             "# --- Memory (pgtune: shared_buffers ~25% RAM) ---",
-            f"shared_buffers = {self.memory.shared_buffers}",
-            f"effective_cache_size = {self.memory.effective_cache_size}",
-            f"work_mem = {self.memory.work_mem}",
-            f"maintenance_work_mem = {self.memory.maintenance_work_mem}",
+            f"shared_buffers = '{self.memory.shared_buffers}'",
+            f"effective_cache_size = '{self.memory.effective_cache_size}'",
+            f"work_mem = '{self.memory.work_mem}'",
+            f"maintenance_work_mem = '{self.memory.maintenance_work_mem}'",
             "",
             "# --- WAL ---",
             f"wal_level = {self.wal.wal_level}",
             f"checkpoint_completion_target = {self.wal.checkpoint_completion_target}",
-            f"max_wal_size = {self.wal.max_wal_size}",
+            f"max_wal_size = '{self.wal.max_wal_size}'",
+            # wal_level=minimal is incompatible with the server default
+            # max_wal_senders=10, and the schema exposes no field for it, so
+            # a specification choosing 'minimal' could never start. Emitting
+            # 0 here honours that choice. Ground truth still accepts only
+            # replica/logical, so the correctness penalty is unaffected;
+            # only the spurious deployment failure goes away.
+            *(["max_wal_senders = 0"] if self.wal.wal_level == "minimal" else []),
             "",
             "# --- Security (CIS PostgreSQL Benchmark L1) ---",
             f"ssl = {_pg_bool(self.security.ssl)}",

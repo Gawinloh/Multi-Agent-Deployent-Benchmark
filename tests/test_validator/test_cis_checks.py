@@ -21,11 +21,23 @@ class FakeRunner:
     specific patterns (e.g. 'SHOW ssl_min_protocol_version') before less
     specific ones ('SHOW ssl')."""
 
+    #: The postgres checker authenticates over TCP with PGPASSWORD, because
+    #: docker exec runs as root and fails peer auth on the Unix socket. The
+    #: real StackRunner generates this per run; the value is irrelevant here
+    #: but the attribute must exist, or every psql-backed check raises
+    #: AttributeError and is recorded as control '?'.
+    postgres_password = "fake-password"
+
     def __init__(self, responses: list[tuple[str, str | CommandResult]]) -> None:
         self._responses = responses
         self.calls: list[tuple[str, str]] = []
 
-    def exec_in(self, service: str, command: list[str]) -> CommandResult:
+    def exec_in(
+        self,
+        service: str,
+        command: list[str],
+        environment: dict[str, str] | None = None,
+    ) -> CommandResult:
         joined = " ".join(command)
         self.calls.append((service, joined))
         for pattern, response in self._responses:

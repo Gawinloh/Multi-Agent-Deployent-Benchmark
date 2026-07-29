@@ -177,13 +177,47 @@ def stack_spec(
 class TestPostgresConfig:
     def test_render_conf_contains_directives(self, postgres_config: PostgresConfig) -> None:
         conf = postgres_config.render_conf()
-        assert "shared_buffers = 2GB" in conf
+        assert "shared_buffers = '2GB'" in conf
         assert "max_connections = 50" in conf
         assert "wal_level = replica" in conf
         assert "ssl = on" in conf
         assert "password_encryption = scram-sha-256" in conf
         assert "log_statement = 'ddl'" in conf
         assert "log_connections = on" in conf
+
+    def test_size_with_space_renders_quoted(
+        self, postgres_config: PostgresConfig
+    ) -> None:
+        """MEMORY_PATTERN admits an optional space, so "6 GB" is a valid
+        specification. Rendered unquoted it produced
+
+            syntax error ... near token "GB"
+
+        and postgres refused to start — a spec that passed our own
+        validation could not deploy. Quoting makes the schema's contract
+        true. This accounted for 5 of 14 pilot startup failures."""
+        config = postgres_config.model_copy(deep=True)
+        config.memory.effective_cache_size = "6 GB"
+        conf = config.render_conf()
+
+        assert "effective_cache_size = '6 GB'" in conf
+
+    def test_minimal_wal_level_emits_max_wal_senders(
+        self, postgres_config: PostgresConfig
+    ) -> None:
+        """wal_level=minimal is offered by the schema but conflicts with the
+        server default max_wal_senders=10, and no schema field exposes it, so
+        choosing 'minimal' could never start. Ground truth still scores
+        'minimal' wrong; only the spurious deploy failure is removed."""
+        config = postgres_config.model_copy(deep=True)
+        config.wal.wal_level = "minimal"
+
+        assert "max_wal_senders = 0" in config.render_conf()
+
+    def test_non_minimal_wal_level_omits_max_wal_senders(
+        self, postgres_config: PostgresConfig
+    ) -> None:
+        assert "max_wal_senders" not in postgres_config.render_conf()
 
     def test_bad_memory_string_rejected(self) -> None:
         with pytest.raises(ValidationError):

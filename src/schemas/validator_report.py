@@ -68,10 +68,40 @@ class ValidatorReport(BaseModel):
     )
 
     def cis_pass_rate(self) -> float | None:
-        """Fraction of CIS checks passed; None if no checks ran."""
+        """Fraction of all CIS checks passed; None if no checks ran.
+
+        Retained for transparency. Its ceiling is bounded by controls no
+        specification can satisfy, so compliance thresholds are compared
+        against :meth:`cis_pass_rate_actionable` instead.
+        """
         if not self.cis_results:
             return None
         return sum(check.passed for check in self.cis_results) / len(self.cis_results)
+
+    def actionable_cis_results(self) -> list[CISCheckResult]:
+        """CIS checks a specification could actually satisfy."""
+        from src.validator.cis_checks import is_actionable
+
+        return [c for c in self.cis_results if is_actionable(c.service, c.control_id)]
+
+    def cis_pass_rate_actionable(self) -> float | None:
+        """Fraction passed among controls reachable through the schema.
+
+        Six of the 32 controls cannot be satisfied by any specification —
+        three nginx headers and a redirect the renderer never emits, a
+        pgAudit extension absent from the image, and a statement_timeout
+        field the schema lacks. Including them caps the raw rate at 0.813
+        and made the GDPR (0.85) and HIPAA/PCI (0.90) floors unreachable by
+        construction, so every compliance scenario failed its floor
+        regardless of agent behaviour.
+
+        This measure scores only what an agent can control, so a failure
+        here is evidence about the agent rather than about the harness.
+        """
+        actionable = self.actionable_cis_results()
+        if not actionable:
+            return None
+        return sum(check.passed for check in actionable) / len(actionable)
 
     def summary(self) -> str:
         """One-line text summary for agent observations and logs."""
@@ -98,5 +128,6 @@ class ValidatorReport(BaseModel):
             "timestamp": self.timestamp.isoformat(),
             "summary": self.summary(),
             "cis_pass_rate": self.cis_pass_rate(),
+            "cis_pass_rate_actionable": self.cis_pass_rate_actionable(),
             "error": self.error,
         }

@@ -140,7 +140,7 @@ class TestDeterministicMode:
         spec = _make_stack_spec()
         result = generate_config(spec.model_dump(), mode="deterministic")
         assert isinstance(result, GeneratedFiles)
-        assert "shared_buffers = 2GB" in result.postgresql_conf
+        assert "shared_buffers = '2GB'" in result.postgresql_conf
         assert "pg_hba.conf" in result.pg_hba_conf
         assert "worker_processes auto" in result.nginx_conf
         assert "maxmemory 2GB" in result.redis_conf
@@ -178,7 +178,7 @@ class TestCompleteMode:
         mock_client.chat.assert_called_once()
         assert isinstance(result, GeneratedFiles)
         assert result.spec == spec
-        assert "shared_buffers = 2GB" in result.postgresql_conf
+        assert "shared_buffers = '2GB'" in result.postgresql_conf
 
     def test_complete_mode_respects_budget(self) -> None:
         """Exhaust the budget; assert BudgetExhausted propagates."""

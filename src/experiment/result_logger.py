@@ -25,6 +25,8 @@ from typing import Any
 
 import structlog
 
+from src.validator.cis_checks import is_actionable
+
 logger = structlog.get_logger(__name__)
 
 
@@ -660,6 +662,20 @@ def compute_scores(
         if cis_results:
             passed = sum(1 for c in cis_results if c.get("passed"))
             scores["cis_pass_rate"] = passed / len(cis_results)
+
+            # Compliance floors are compared against the actionable rate;
+            # the raw rate above is kept for transparency because its
+            # ceiling is set by controls no specification can satisfy.
+            actionable = [
+                c
+                for c in cis_results
+                if is_actionable(c.get("service", ""), c.get("control_id", ""))
+            ]
+            if actionable:
+                passed_actionable = sum(1 for c in actionable if c.get("passed"))
+                scores["cis_pass_rate_actionable"] = passed_actionable / len(actionable)
+                scores["cis_controls_actionable"] = len(actionable)
+                scores["cis_controls_total"] = len(cis_results)
 
         smoke = report.get("smoke_tests", {})
         if smoke:

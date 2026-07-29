@@ -276,6 +276,105 @@ def _parse_with_retries(
     )
 
 
+class _StructuredAttemptFailed(Exception):
+    """One constrained-decoding attempt failed schema validation.
+
+    Carries that attempt's token usage so the caller can bill it even
+    though the attempt produced nothing usable.
+    """
+
+    def __init__(self, error: Exception, usage: TokenUsage) -> None:
+        super().__init__(str(error))
+        self.error = error
+        self.usage = usage
+
+
+def _is_schema_failure(exc: Exception) -> bool:
+    """Whether *exc* means "the model's output did not validate".
+
+    Only these are worth retrying. Transport and auth errors must
+    propagate rather than burn the retry budget, and Instructor's
+    exception types are matched by name because the SDK is imported
+    lazily and may be absent.
+    """
+    if isinstance(exc, ValidationError):
+        return True
+    return type(exc).__name__ in {
+        "InstructorRetryException",
+        "IncompleteOutputException",
+    }
+
+
+def _usage_of_failed_attempt(
+    exc: Exception, extract: Callable[[Any], TokenUsage]
+) -> TokenUsage:
+    """Best-effort usage for an attempt that raised.
+
+    Instructor attaches the raw completion to its retry exception. When
+    it is absent or shaped unexpectedly the attempt is billed as zero,
+    which under-counts rather than inventing tokens.
+    """
+    completion = getattr(exc, "last_completion", None)
+    if completion is None:
+        return TokenUsage(0, 0)
+    try:
+        return extract(completion)
+    except (AttributeError, TypeError):
+        return TokenUsage(0, 0)
+
+
+def _retry_structured(
+    attempt: Callable[[list[Message]], tuple[BaseModel, TokenUsage]],
+    messages: list[Message],
+    backend: str,
+) -> tuple[BaseModel, TokenUsage]:
+    """Retry a constrained-decoding call, accumulating usage per attempt.
+
+    Instructor can retry internally, but ``create_with_completion``
+    returns only the *final* completion, so internally-retried attempts
+    are invisible: their tokens are spent at the provider but never
+    reported, never debited from :class:`TokenBudget`, and never written
+    to the run JSON. Backends therefore call Instructor with
+    ``max_retries=1`` and retry here instead.
+
+    This mirrors :func:`_parse_with_retries` — same attempt count, same
+    cumulative usage, same terminal exception — so that all four
+    backends account for tokens identically and H3 comparisons across
+    models remain valid.
+    """
+    total_usage = TokenUsage(0, 0)
+    convo = list(messages)
+    last_error: Exception | None = None
+    for attempt_number in range(1 + MAX_SCHEMA_RETRIES):
+        try:
+            parsed, usage = attempt(convo)
+        except _StructuredAttemptFailed as failure:
+            total_usage = total_usage + failure.usage
+            last_error = failure.error
+            logger.warning(
+                "schema_validation_failed",
+                backend=backend,
+                attempt=attempt_number + 1,
+                error=str(failure.error),
+            )
+            convo = convo + [
+                {
+                    "role": "user",
+                    "content": (
+                        "Your previous response failed validation with this "
+                        f"error:\n{failure.error}\nRespond again with a "
+                        "corrected object only."
+                    ),
+                }
+            ]
+            continue
+        return parsed, total_usage + usage
+    raise SchemaParseError(
+        f"{backend}: output failed schema validation after "
+        f"{MAX_SCHEMA_RETRIES} retries: {last_error}"
+    )
+
+
 class OllamaClient(LLMClient):
     """Local models via Ollama. Reads OLLAMA_HOST and OLLAMA_MODEL."""
 
@@ -366,19 +465,35 @@ class AnthropicClient(LLMClient):
             usage = TokenUsage(response.usage.input_tokens, response.usage.output_tokens)
             return response.content[0].text, usage
 
-        kwargs = {}
-        if system:
-            kwargs["system"] = system
-        parsed, completion = self._instructor.messages.create_with_completion(
-            model=self._model,
-            max_tokens=self._max_tokens,
-            messages=rest,
-            response_model=schema,
-            max_retries=MAX_SCHEMA_RETRIES,
-            **kwargs,
-        )
-        usage = TokenUsage(completion.usage.input_tokens, completion.usage.output_tokens)
-        return parsed, usage
+        def attempt(convo: list[Message]) -> tuple[BaseModel, TokenUsage]:
+            convo_system, convo_rest = _split_system(convo)
+            call_kwargs: dict[str, Any] = {}
+            if convo_system:
+                call_kwargs["system"] = convo_system
+            try:
+                parsed, completion = self._instructor.messages.create_with_completion(
+                    model=self._model,
+                    max_tokens=self._max_tokens,
+                    messages=convo_rest,
+                    response_model=schema,
+                    # Retries are driven by _retry_structured, not
+                    # Instructor, so that every attempt's usage is billed.
+                    max_retries=1,
+                    **call_kwargs,
+                )
+            except Exception as exc:
+                if not _is_schema_failure(exc):
+                    raise
+                raise _StructuredAttemptFailed(
+                    exc, _usage_of_failed_attempt(exc, self._usage_of)
+                ) from exc
+            return parsed, self._usage_of(completion)
+
+        return _retry_structured(attempt, messages, self.backend_name)
+
+    @staticmethod
+    def _usage_of(completion: Any) -> TokenUsage:
+        return TokenUsage(completion.usage.input_tokens, completion.usage.output_tokens)
 
 
 class OpenAIClient(LLMClient):
@@ -406,16 +521,33 @@ class OpenAIClient(LLMClient):
             )
             return response.choices[0].message.content, usage
 
-        parsed, completion = self._instructor.chat.completions.create_with_completion(
-            model=self._model,
-            messages=messages,
-            response_model=schema,
-            max_retries=MAX_SCHEMA_RETRIES,
-        )
-        usage = TokenUsage(
+        def attempt(convo: list[Message]) -> tuple[BaseModel, TokenUsage]:
+            try:
+                parsed, completion = (
+                    self._instructor.chat.completions.create_with_completion(
+                        model=self._model,
+                        messages=convo,
+                        response_model=schema,
+                        # Retries are driven by _retry_structured, not
+                        # Instructor, so that every attempt's usage is billed.
+                        max_retries=1,
+                    )
+                )
+            except Exception as exc:
+                if not _is_schema_failure(exc):
+                    raise
+                raise _StructuredAttemptFailed(
+                    exc, _usage_of_failed_attempt(exc, self._usage_of)
+                ) from exc
+            return parsed, self._usage_of(completion)
+
+        return _retry_structured(attempt, messages, self.backend_name)
+
+    @staticmethod
+    def _usage_of(completion: Any) -> TokenUsage:
+        return TokenUsage(
             completion.usage.prompt_tokens, completion.usage.completion_tokens
         )
-        return parsed, usage
 
 
 class GeminiClient(LLMClient):

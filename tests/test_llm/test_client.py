@@ -96,6 +96,35 @@ def fake_gemini(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     return genai_mod
 
 
+class InstructorRetryException(Exception):
+    """Stand-in for Instructor's retry exception.
+
+    ``_is_schema_failure`` matches Instructor's exception types by class
+    name, because the SDK is imported lazily and is not installed in the
+    test environment. Reproducing the name here exercises that path.
+    """
+
+    def __init__(self, last_completion: object | None) -> None:
+        super().__init__("validation failed")
+        self.last_completion = last_completion
+
+
+def _instructor_retry_error(last_completion: object | None) -> InstructorRetryException:
+    return InstructorRetryException(last_completion)
+
+
+def _anthropic_completion(input_tokens: int, output_tokens: int) -> SimpleNamespace:
+    return SimpleNamespace(
+        usage=SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens)
+    )
+
+
+def _openai_completion(prompt: int, completion: int) -> SimpleNamespace:
+    return SimpleNamespace(
+        usage=SimpleNamespace(prompt_tokens=prompt, completion_tokens=completion)
+    )
+
+
 def _gemini_response(text: str, prompt: int = 7, candidates: int = 3) -> SimpleNamespace:
     return SimpleNamespace(
         text=text,
@@ -299,7 +328,58 @@ class TestAnthropicClient:
         assert usage == TokenUsage(30, 15)
         kwargs = instructor_client.messages.create_with_completion.call_args.kwargs
         assert kwargs["response_model"] is Answer
-        assert kwargs["max_retries"] == 3
+        # Retries are driven by our own loop so that every attempt is
+        # billed; Instructor must not retry internally.
+        assert kwargs["max_retries"] == 1
+
+    def test_schema_retry_accumulates_usage(
+        self, fake_anthropic: tuple[MagicMock, MagicMock]
+    ) -> None:
+        _, instructor_client = fake_anthropic
+        parsed = Answer(city="Coventry", population=345000)
+        instructor_client.messages.create_with_completion.side_effect = [
+            _instructor_retry_error(_anthropic_completion(30, 15)),
+            _instructor_retry_error(_anthropic_completion(40, 20)),
+            (parsed, _anthropic_completion(50, 25)),
+        ]
+        client = get_client("anthropic")
+
+        result, usage = client.chat(MESSAGES, schema=Answer)
+
+        assert result is parsed
+        # The sum of all three attempts, not just the last.
+        assert usage == TokenUsage(120, 60)
+        assert instructor_client.messages.create_with_completion.call_count == 3
+
+    def test_schema_fails_after_max_retries(
+        self, fake_anthropic: tuple[MagicMock, MagicMock]
+    ) -> None:
+        _, instructor_client = fake_anthropic
+        instructor_client.messages.create_with_completion.side_effect = (
+            _instructor_retry_error(_anthropic_completion(10, 5))
+        )
+        client = get_client("anthropic")
+
+        with pytest.raises(SchemaParseError):
+            client.chat(MESSAGES, schema=Answer)
+
+        # Same attempt budget as the locally-parsed backends.
+        assert instructor_client.messages.create_with_completion.call_count == 4
+
+    def test_transport_error_is_not_retried(
+        self, fake_anthropic: tuple[MagicMock, MagicMock]
+    ) -> None:
+        _, instructor_client = fake_anthropic
+        instructor_client.messages.create_with_completion.side_effect = (
+            RuntimeError("401 invalid api key")
+        )
+        client = get_client("anthropic")
+
+        with pytest.raises(RuntimeError):
+            client.chat(MESSAGES, schema=Answer)
+
+        # A bad key must fail immediately rather than burn four calls.
+        assert instructor_client.messages.create_with_completion.call_count == 1
 
 
 # ---------------------------------------------------------------------------
@@ -339,6 +419,61 @@ class TestOpenAIClient:
 
         assert result is parsed
         assert usage == TokenUsage(25, 12)
+        kwargs = instructor_client.chat.completions.create_with_completion.call_args.kwargs
+        assert kwargs["max_retries"] == 1
+
+    def test_schema_retry_accumulates_usage(
+        self, fake_openai: tuple[MagicMock, MagicMock]
+    ) -> None:
+        _, instructor_client = fake_openai
+        parsed = Answer(city="York", population=200000)
+        instructor_client.chat.completions.create_with_completion.side_effect = [
+            _instructor_retry_error(_openai_completion(25, 12)),
+            (parsed, _openai_completion(30, 14)),
+        ]
+        client = get_client("openai")
+
+        result, usage = client.chat(MESSAGES, schema=Answer)
+
+        assert result is parsed
+        # Both attempts, not just the successful one.
+        assert usage == TokenUsage(55, 26)
+        assert instructor_client.chat.completions.create_with_completion.call_count == 2
+
+    def test_retry_conversation_carries_the_error(
+        self, fake_openai: tuple[MagicMock, MagicMock]
+    ) -> None:
+        _, instructor_client = fake_openai
+        parsed = Answer(city="York", population=200000)
+        instructor_client.chat.completions.create_with_completion.side_effect = [
+            _instructor_retry_error(_openai_completion(25, 12)),
+            (parsed, _openai_completion(30, 14)),
+        ]
+        client = get_client("openai")
+
+        client.chat(MESSAGES, schema=Answer)
+
+        sent = instructor_client.chat.completions.create_with_completion.call_args.kwargs[
+            "messages"
+        ]
+        assert any("failed validation" in m["content"] for m in sent)
+
+    def test_usage_unavailable_on_failed_attempt_bills_zero(
+        self, fake_openai: tuple[MagicMock, MagicMock]
+    ) -> None:
+        """A failure with no attached completion under-counts rather than
+        inventing tokens."""
+        _, instructor_client = fake_openai
+        parsed = Answer(city="York", population=200000)
+        instructor_client.chat.completions.create_with_completion.side_effect = [
+            _instructor_retry_error(None),
+            (parsed, _openai_completion(30, 14)),
+        ]
+        client = get_client("openai")
+
+        _, usage = client.chat(MESSAGES, schema=Answer)
+
+        assert usage == TokenUsage(30, 14)
 
 
 # ---------------------------------------------------------------------------

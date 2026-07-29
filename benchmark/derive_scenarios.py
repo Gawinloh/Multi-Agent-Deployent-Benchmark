@@ -434,6 +434,24 @@ REDIS_POLICIES: dict[str, list[str]] = {
 }
 
 #: Minimum CIS Level 1 pass rate expected per compliance profile.
+#:
+#: Compared against ``cis_pass_rate_actionable`` — the 26 of 32 controls a
+#: specification can actually satisfy — not against the raw rate. Six
+#: controls are unreachable through the agent-facing schema (see
+#: ``src.validator.cis_checks.UNREACHABLE_CONTROLS``), which capped the raw
+#: rate at 26/32 = 0.813 and so put the GDPR and HIPAA/PCI floors below the
+#: achievable maximum by construction: every compliance scenario failed its
+#: floor no matter how the agent behaved.
+#:
+#: This is the same fault as the withdrawn vCPU-scaled ``max_connections``
+#: rule — a threshold that no run could meet measures the rule, not the
+#: agent — and is corrected the same way, by fixing the rule rather than
+#: reinterpreting the results.
+#:
+#: The values themselves are unchanged; only the denominator they are
+#: compared against has been corrected. Against 26 actionable controls the
+#: pilot's typical 24 passes give 0.923, so all three floors now sit below
+#: the observed level and can discriminate in either direction.
 CIS_MINIMUM: dict[str, float] = {
     "NONE": 0.75,
     "GDPR_UK": 0.85,

@@ -26,6 +26,7 @@ from typing import Any
 
 import structlog
 import yaml
+from dotenv import load_dotenv
 
 from src.experiment.result_logger import (
     RunResult,
@@ -36,6 +37,14 @@ from src.experiment.result_logger import (
 )
 
 logger = structlog.get_logger(__name__)
+
+# Backend selection lives in .env (LLM_BACKEND, OLLAMA_MODEL, API keys).
+# Without this the client falls back to its hardcoded default model, which
+# silently ran an entire matrix on qwen2.5:7b instead of the 14b the study
+# specifies. Loaded at import so every entry point into the runner —
+# including scripts/run_matrix.py, which invokes it as a subprocess — sees
+# the same configuration. Real environment variables still win.
+load_dotenv()
 
 
 def load_scenario(path: Path) -> dict[str, Any]:
