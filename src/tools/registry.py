@@ -76,8 +76,19 @@ class GenerateConfigInput(BaseModel):
     """Input schema for the ``generate_config`` tool."""
 
     partial_spec: dict[str, Any] = Field(description="full or partial StackSpec dict")
+    #: Defaults to "complete" because that is the call every agent prompt
+    #: documents: pass a partial requirements skeleton and have the LLM fill
+    #: the service sections in. The previous default of "deterministic" ran
+    #: StackSpec.model_validate on that skeleton and rejected it for missing
+    #: postgres/nginx/redis/pg_hba — so a model that omitted the argument was
+    #: refused the input shape the tool exists to accept.
     mode: str = Field(
-        default="deterministic", description='"deterministic" or "complete"'
+        default="complete",
+        description=(
+            '"complete" (default) fills missing fields from a partial spec '
+            'via the LLM; "deterministic" validates and renders an already '
+            "complete StackSpec without an LLM call"
+        ),
     )
 
 
@@ -200,8 +211,11 @@ def _build_default_registry() -> ToolRegistry:
             name="generate_config",
             description=(
                 "Render or LLM-complete a StackSpec into config files. "
-                "Mode 'deterministic' validates and renders; 'complete' "
-                "uses the LLM to fill missing fields."
+                "Mode 'complete' (the default) uses the LLM to fill missing "
+                "fields, so a partial spec containing only 'requirements' is "
+                "accepted. Mode 'deterministic' skips the LLM and requires an "
+                "already complete StackSpec with postgres, nginx, redis and "
+                "pg_hba present."
             ),
             input_schema=GenerateConfigInput,
             fn=generate_config,

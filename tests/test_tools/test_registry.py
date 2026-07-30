@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from src.schemas.agent import ToolCall
 from src.tools.registry import (
+    GenerateConfigInput,
     QueryRagInput,
     Tool,
     ToolRegistry,
@@ -123,6 +124,63 @@ def _good_spec_dict() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # ToolRegistry basics
 # ---------------------------------------------------------------------------
+
+
+class TestGenerateConfigDefaultMode:
+    """The default is "complete", matching the call every agent prompt
+    documents. Under the previous "deterministic" default, a model that
+    omitted the argument had its partial spec run through
+    StackSpec.model_validate and rejected for missing postgres/nginx/redis/
+    pg_hba — gpt-4.1-nano failed this way on 23 of 25 iterations, never
+    producing a specification."""
+
+    REQUIREMENTS_ONLY = {
+        "requirements": {
+            "workload_class": "OLTP",
+            "compliance": "NONE",
+            "hardware": {"ram_gb": 4, "vcpu": 2, "disk_gb": 100},
+            "expected_concurrent_users": 25,
+            "expected_data_size_gb": 10,
+            "backup_required": False,
+        }
+    }
+
+    def test_default_is_complete(self) -> None:
+        assert GenerateConfigInput(partial_spec={}).mode == "complete"
+
+    def test_explicit_deterministic_still_honoured(self) -> None:
+        assert (
+            GenerateConfigInput(partial_spec={}, mode="deterministic").mode
+            == "deterministic"
+        )
+
+    def test_requirements_only_spec_routes_to_complete(self) -> None:
+        """The exact call shape nano produced must now reach the LLM-completion
+        path rather than being rejected by schema validation."""
+        seen: dict[str, object] = {}
+
+        def stub(**kwargs: object) -> dict[str, str]:
+            seen.update(kwargs)
+            return {"ok": "rendered"}
+
+        reg = ToolRegistry()
+        reg.register(
+            Tool(
+                name="generate_config",
+                description="d",
+                input_schema=GenerateConfigInput,
+                fn=stub,
+            )
+        )
+        obs = reg.dispatch(
+            ToolCall(
+                name="generate_config",
+                args={"partial_spec": self.REQUIREMENTS_ONLY},
+            )
+        )
+
+        assert obs.success, obs.error
+        assert seen["mode"] == "complete"
 
 
 class TestQueryRagInputServiceCoercion:
