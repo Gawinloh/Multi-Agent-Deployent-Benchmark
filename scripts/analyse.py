@@ -617,7 +617,8 @@ def check(label: str, got: float, want: float, tol: float, failures: list[str]) 
     ok = abs(got - want) <= tol
     if not ok:
         failures.append(f"{label}: computed {got!r}, expected {want!r}")
-    return f"  {'PASS' if ok else 'FAIL'}  {label:<44} computed={got:>12.4f}  expected={want:>12.4f}"
+    verdict = "PASS" if ok else "FAIL"
+    return f"  {verdict}  {label:<44} computed={got:>12.4f}  expected={want:>12.4f}"
 
 
 # ---------------------------------------------------------------------------
@@ -662,7 +663,8 @@ def main() -> None:
     tok_test = paired_test(paired["d_tokens"].tolist())
     wall_test = paired_test(paired["d_wall"].tolist())
     summary_rows = []
-    for name, res in (("correctness", corr_test), ("tokens", tok_test), ("wall_clock_s", wall_test)):
+    tests = (("correctness", corr_test), ("tokens", tok_test), ("wall_clock_s", wall_test))
+    for name, res in tests:
         summary_rows.append({"measure": name, **res})
     paired.to_csv(OUT / "table2_paired_differences.csv", index=False)
     pd.DataFrame(summary_rows).to_csv(OUT / "table2_paired_summary.csv", index=False)
@@ -710,10 +712,11 @@ def main() -> None:
         }
     pd.DataFrame(pooled).T.to_csv(OUT / "table0_pooled_descriptives.csv")
 
+    ps_, pm_ = pooled["single"], pooled["multi"]
     fisher = stats.fisher_exact(
         [
-            [pooled["single"]["n_finalised"], pooled["single"]["n"] - pooled["single"]["n_finalised"]],
-            [pooled["multi"]["n_finalised"], pooled["multi"]["n"] - pooled["multi"]["n_finalised"]],
+            [ps_["n_finalised"], ps_["n"] - ps_["n_finalised"]],
+            [pm_["n_finalised"], pm_["n"] - pm_["n_finalised"]],
         ]
     )
 
@@ -727,7 +730,8 @@ def main() -> None:
     print("\n--- POOLED (correctness over finalised runs only) ---")
     for arch in ARMS:
         p = pooled[arch]
-        print(f"  {arch:<7} correctness {p['corr_mean']:.4f} (sd {p['corr_sd']:.4f}, n={p['corr_n']})"
+        print(f"  {arch:<7} correctness {p['corr_mean']:.4f}"
+              f" (sd {p['corr_sd']:.4f}, n={p['corr_n']})"
               f" | cis_actionable {p['cis_mean']:.4f} (sd {p['cis_sd']:.4f})"
               f" | cis_raw {p['cis_raw_mean']:.4f}")
         print(f"          tokens {p['tok_mean']:,.0f} (sd {p['tok_sd']:,.0f})"
@@ -737,7 +741,7 @@ def main() -> None:
     print(f"  multi/single ratio — tokens {ratio_tok:.2f}x, wall clock {ratio_wall:.2f}x")
 
     print("\n--- PAIRED BY SCENARIO (n=12, single minus multi) ---")
-    for name, res in (("correctness", corr_test), ("tokens", tok_test), ("wall_clock_s", wall_test)):
+    for name, res in tests:
         print(f"  {name:<14} d={res['mean']:>12,.4f}  95% CI [{res['ci_low']:>12,.4f},"
               f" {res['ci_high']:>12,.4f}]  t({res['df']})={res['t']:.3f}  p={res['p']:.4f}")
 
@@ -745,7 +749,8 @@ def main() -> None:
     for _, row in shares.iterrows():
         print(f"  {row['agent']:<14} {row['total_tokens']:>10,.0f} tokens"
               f"  {row['pct_of_multi_tokens']:>5.1f}% of multi total"
-              f"  (mean {row['mean_pct_within_run']:.1f}% within a run, present in {row['n_runs_present']} runs)")
+              f"  (mean {row['mean_pct_within_run']:.1f}% within a run,"
+              f" present in {row['n_runs_present']} runs)")
     single_total = sum(r.get("tokens_used") or 0 for r in study1 if r["architecture"] == "single")
     multi_total = sum(r.get("tokens_used") or 0 for r in study1 if r["architecture"] == "multi")
     print(f"  multi total {multi_total:,} vs single total {single_total:,}"
@@ -756,8 +761,10 @@ def main() -> None:
 
     print("\n--- TOKENS vs CORRECTNESS ---")
     for _, row in corr_df.iterrows():
-        print(f"  {row['architecture']:<7} pearson r={row['pearson_r']:+.3f} (p={row['pearson_p']:.3f})"
-              f"  spearman rho={row['spearman_rho']:+.3f} (p={row['spearman_p']:.3f})  n={row['n']}")
+        print(f"  {row['architecture']:<7}"
+              f" pearson r={row['pearson_r']:+.3f} (p={row['pearson_p']:.3f})"
+              f"  spearman rho={row['spearman_rho']:+.3f}"
+              f" (p={row['spearman_p']:.3f})  n={row['n']}")
 
     print("\n--- VARIANCE DECOMPOSITION (correctness) ---")
     for _, row in var_df.iterrows():
@@ -771,7 +778,8 @@ def main() -> None:
               + (f"  mean +{sub['overshoot'].mean():,.0f}  max +{sub['overshoot'].max():,.0f}"
                  if len(sub) else ""))
     for _, row in over_df.iterrows():
-        print(f"      {row['scenario']:<34} {row['architecture']:<7} +{row['overshoot']:,} ({row['overshoot_pct']:.1f}%)")
+        print(f"      {row['scenario']:<34} {row['architecture']:<7}"
+              f" +{row['overshoot']:,} ({row['overshoot_pct']:.1f}%)")
 
     print("\n--- FAILURE TAXONOMY ---")
     if t3.empty:
@@ -799,30 +807,33 @@ def main() -> None:
     print("VERIFICATION against independently checked values")
     print("=" * 78)
     failures: list[str] = []
-    lines = [
-        check("paired correctness delta", corr_test["mean"], EXPECTED["paired_correctness_delta"], 5e-4, failures),
-        check("paired correctness CI low", corr_test["ci_low"], EXPECTED["paired_correctness_ci"][0], 5e-4, failures),
-        check("paired correctness CI high", corr_test["ci_high"], EXPECTED["paired_correctness_ci"][1], 5e-4, failures),
-        check("paired correctness t", corr_test["t"], EXPECTED["paired_correctness_t"], 5e-3, failures),
-        check("paired tokens delta", tok_test["mean"], EXPECTED["paired_tokens_delta"], 1.0, failures),
-        check("paired tokens CI low", tok_test["ci_low"], EXPECTED["paired_tokens_ci"][0], 1.0, failures),
-        check("paired tokens CI high", tok_test["ci_high"], EXPECTED["paired_tokens_ci"][1], 1.0, failures),
-        check("paired tokens t", tok_test["t"], EXPECTED["paired_tokens_t"], 5e-3, failures),
-        check("completion single", pooled["single"]["n_finalised"], EXPECTED["completion_single"][0], 0, failures),
-        check("completion multi", pooled["multi"]["n_finalised"], EXPECTED["completion_multi"][0], 0, failures),
-        check("fisher exact p", fisher.pvalue, EXPECTED["fisher_p"], 5e-3, failures),
-        check("pooled correctness single", pooled["single"]["corr_mean"], EXPECTED["pooled_correctness_single"][0], 5e-5, failures),
-        check("pooled correctness single sd", pooled["single"]["corr_sd"], EXPECTED["pooled_correctness_single"][1], 5e-5, failures),
-        check("pooled correctness multi", pooled["multi"]["corr_mean"], EXPECTED["pooled_correctness_multi"][0], 5e-5, failures),
-        check("pooled correctness multi sd", pooled["multi"]["corr_sd"], EXPECTED["pooled_correctness_multi"][1], 5e-5, failures),
-        check("pooled cis single", pooled["single"]["cis_mean"], EXPECTED["pooled_cis_single"][0], 5e-5, failures),
-        check("pooled cis multi", pooled["multi"]["cis_mean"], EXPECTED["pooled_cis_multi"][0], 5e-5, failures),
-        check("pooled tokens single", pooled["single"]["tok_mean"], EXPECTED["pooled_tokens_single"][0], 1.0, failures),
-        check("pooled tokens multi", pooled["multi"]["tok_mean"], EXPECTED["pooled_tokens_multi"][0], 1.0, failures),
-        check("ratio tokens", ratio_tok, EXPECTED["ratio_tokens"], 5e-3, failures),
-        check("ratio wall clock", ratio_wall, EXPECTED["ratio_wall"], 5e-3, failures),
+    exp = EXPECTED
+    ct, tt = corr_test, tok_test
+    ps, pm = pooled["single"], pooled["multi"]
+    checks = [
+        ("paired correctness delta", ct["mean"], exp["paired_correctness_delta"], 5e-4),
+        ("paired correctness CI low", ct["ci_low"], exp["paired_correctness_ci"][0], 5e-4),
+        ("paired correctness CI high", ct["ci_high"], exp["paired_correctness_ci"][1], 5e-4),
+        ("paired correctness t", ct["t"], exp["paired_correctness_t"], 5e-3),
+        ("paired tokens delta", tt["mean"], exp["paired_tokens_delta"], 1.0),
+        ("paired tokens CI low", tt["ci_low"], exp["paired_tokens_ci"][0], 1.0),
+        ("paired tokens CI high", tt["ci_high"], exp["paired_tokens_ci"][1], 1.0),
+        ("paired tokens t", tt["t"], exp["paired_tokens_t"], 5e-3),
+        ("completion single", ps["n_finalised"], exp["completion_single"][0], 0),
+        ("completion multi", pm["n_finalised"], exp["completion_multi"][0], 0),
+        ("fisher exact p", fisher.pvalue, exp["fisher_p"], 5e-3),
+        ("pooled correctness single", ps["corr_mean"], exp["pooled_correctness_single"][0], 5e-5),
+        ("pooled correctness single sd", ps["corr_sd"], exp["pooled_correctness_single"][1], 5e-5),
+        ("pooled correctness multi", pm["corr_mean"], exp["pooled_correctness_multi"][0], 5e-5),
+        ("pooled correctness multi sd", pm["corr_sd"], exp["pooled_correctness_multi"][1], 5e-5),
+        ("pooled cis single", ps["cis_mean"], exp["pooled_cis_single"][0], 5e-5),
+        ("pooled cis multi", pm["cis_mean"], exp["pooled_cis_multi"][0], 5e-5),
+        ("pooled tokens single", ps["tok_mean"], exp["pooled_tokens_single"][0], 1.0),
+        ("pooled tokens multi", pm["tok_mean"], exp["pooled_tokens_multi"][0], 1.0),
+        ("ratio tokens", ratio_tok, exp["ratio_tokens"], 5e-3),
+        ("ratio wall clock", ratio_wall, exp["ratio_wall"], 5e-3),
     ]
-    print("\n".join(lines))
+    print("\n".join(check(lbl, got, want, tol, failures) for lbl, got, want, tol in checks))
     print()
     if failures:
         print(f"!! {len(failures)} MISMATCH(ES) — do not write from these numbers until resolved:")
@@ -831,7 +842,9 @@ def main() -> None:
     else:
         print("All checks passed; the script reproduces the verified numbers.")
 
-    print(f"\nwrote {len(list(OUT.glob('*.csv')))} CSV and {len(list(OUT.glob('*.png')))} PNG to {OUT.relative_to(REPO)}/")
+    n_csv = len(list(OUT.glob("*.csv")))
+    n_png = len(list(OUT.glob("*.png")))
+    print(f"\nwrote {n_csv} CSV and {n_png} PNG to {OUT.relative_to(REPO)}/")
 
 
 if __name__ == "__main__":
