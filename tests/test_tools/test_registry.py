@@ -125,6 +125,41 @@ def _good_spec_dict() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+class TestQueryRagInputServiceCoercion:
+    """A non-string service filter degrades to an unfiltered search.
+
+    Models pass a list of services, or a bare null, in this field. Raising
+    a ValidationError cost the worker an entire iteration and taught it
+    nothing, so the filter is dropped instead — the same tolerance the
+    corpus alias table applies to unrecognised service names."""
+
+    def test_list_is_dropped(self) -> None:
+        assert QueryRagInput(
+            question="q", service=["postgres", "nginx"]
+        ).service is None
+
+    def test_none_is_preserved(self) -> None:
+        assert QueryRagInput(question="q", service=None).service is None
+
+    def test_valid_string_is_untouched(self) -> None:
+        assert QueryRagInput(question="q", service="postgres").service == "postgres"
+
+    def test_dispatch_no_longer_fails_on_a_list(self) -> None:
+        reg = ToolRegistry()
+        reg.register(
+            Tool(
+                name="query_rag",
+                description="d",
+                input_schema=QueryRagInput,
+                fn=lambda **kw: [{"text": "t", "source": "s"}],
+            )
+        )
+        obs = reg.dispatch(
+            ToolCall(name="query_rag", args={"question": "q", "service": ["pg"]})
+        )
+        assert obs.success, obs.error
+
+
 class TestToolRegistry:
     def test_register_and_get(self) -> None:
         reg = ToolRegistry()

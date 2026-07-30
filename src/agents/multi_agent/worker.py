@@ -61,6 +61,52 @@ def _build_worker_registry(
     return restricted
 
 
+#: How much of each retrieved chunk to carry into a worker summary, and how
+#: many chunks. The summary is forwarded to other workers via the
+#: orchestrator, so it lands in their prompts and is charged to the token
+#: budget that H3 measures. These bounds keep a multi-query worker's summary
+#: to roughly a thousand characters while still carrying something specific
+#: enough to act on.
+_RAG_EXCERPT_CHARS = 240
+_RAG_MAX_CHUNKS = 2
+
+
+def _summarise_rag(entry: HistoryEntry) -> str:
+    """Summarise a query_rag observation by what it *retrieved*.
+
+    This previously reported ``entry.thought.reasoning`` — the worker's
+    stated intention before searching — and discarded the returned chunks
+    entirely. Because query_rag is the security worker's only tool, its
+    whole summary was a series of intentions, so it could never communicate
+    a finding: the orchestrator forwarded the summary to the config worker,
+    which received no recommendations and re-derived them through its own
+    RAG queries. The retrieved text is the payload; the question is kept as
+    context for what the excerpts answer.
+    """
+    chunks = entry.observation.result
+    question = str(entry.tool_call.args.get("question", "")).strip()
+    context = f' for "{question[:80]}"' if question else ""
+
+    if not isinstance(chunks, list) or not chunks:
+        return f"RAG lookup{context} returned no results."
+
+    excerpts: list[str] = []
+    for chunk in chunks[:_RAG_MAX_CHUNKS]:
+        if not isinstance(chunk, dict):
+            continue
+        # Collapse whitespace so multi-line corpus chunks stay on one line
+        # and the character budget buys content rather than newlines.
+        text = " ".join(str(chunk.get("text", "")).split())[:_RAG_EXCERPT_CHARS]
+        if not text:
+            continue
+        source = str(chunk.get("source") or "unknown source")
+        excerpts.append(f"[{source}] {text}")
+
+    if not excerpts:
+        return f"RAG lookup{context} returned results with no usable text."
+    return f"Retrieved guidance{context}: " + " | ".join(excerpts)
+
+
 class WorkerAgent:
     """Mini-ReAct agent scoped to a single specialist role.
 
@@ -284,7 +330,8 @@ class WorkerAgent:
             artifacts=artifacts,
         )
 
-    def _build_summary(self, history: list[HistoryEntry]) -> str:
+    @staticmethod
+    def _build_summary(history: list[HistoryEntry]) -> str:
         """Produce a concise summary from the worker's history."""
         if not history:
             return "No actions taken."
@@ -316,9 +363,7 @@ class WorkerAgent:
                         f"{cis_pass}/{len(cis)} CIS checks passed."
                     )
                 elif tc.name == "query_rag":
-                    parts.append(
-                        f"RAG lookup: {entry.thought.reasoning[:100]}"
-                    )
+                    parts.append(_summarise_rag(entry))
                 else:
                     parts.append(f"{tc.name} succeeded.")
             else:

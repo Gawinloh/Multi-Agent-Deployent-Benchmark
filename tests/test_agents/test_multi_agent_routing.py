@@ -10,7 +10,7 @@ These tests pin the routing, not the wording of any prompt.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel
@@ -20,7 +20,12 @@ from src.agents.multi_agent.worker import WorkerAgent
 from src.agents.single_agent.agent import AgentStep
 from src.llm.client import TokenUsage
 from src.llm.token_budget import TokenBudget
-from src.schemas.agent import AgentThought, ToolCall
+from src.schemas.agent import (
+    AgentThought,
+    HistoryEntry,
+    ToolCall,
+    ToolObservation,
+)
 
 
 class CapturingClient:
@@ -59,7 +64,7 @@ class CapturingClient:
 
 def _report(error: str | None = None) -> dict[str, Any]:
     return {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "smoke_tests": {},
         "benchmarks": {},
         "cis_results": [],
@@ -114,6 +119,81 @@ class TestWorkerConsumesValidatorReport:
 
         assert result is not None
         assert "Most recent validation result" not in client.all_text()
+
+
+def _rag_entry(
+    question: str,
+    chunks: Any,
+    reasoning: str = "I need to look up hardening guidance",
+) -> HistoryEntry:
+    return HistoryEntry(
+        thought=AgentThought(reasoning=reasoning, planned_next_action="search"),
+        tool_call=ToolCall(name="query_rag", args={"question": question, "k": 2}),
+        observation=ToolObservation(success=True, result=chunks),
+    )
+
+
+class TestSummaryCarriesRetrievedContent:
+    """The security worker's only tool is query_rag, so its summary is the
+    sole channel through which a finding can reach another worker. The
+    summary previously reported the worker's own reasoning and discarded
+    every retrieved chunk, so the security worker could not communicate a
+    finding in any run. These tests fail against that behaviour."""
+
+    def test_summary_contains_retrieved_text_not_just_reasoning(self) -> None:
+        history = [
+            _rag_entry(
+                "postgres TLS hardening",
+                [
+                    {
+                        "text": "Set ssl = on and require scram-sha-256 for all "
+                        "host connections.",
+                        "source": "CIS PostgreSQL Benchmark",
+                        "url": "https://example.invalid/cis",
+                        "service": "postgres",
+                        "score": 0.91,
+                    }
+                ],
+                reasoning="I need to understand the hardening recommendations",
+            )
+        ]
+
+        summary = WorkerAgent._build_summary(history)
+
+        assert "scram-sha-256" in summary
+        assert "CIS PostgreSQL Benchmark" in summary
+        # The bug: the worker's intention standing in for the retrieved text.
+        assert "RAG lookup: I need to understand" not in summary
+
+    def test_multiple_chunks_are_bounded(self) -> None:
+        """Summaries are forwarded into other workers' prompts and charged to
+        the budget H3 measures, so they must stay bounded."""
+        history = [
+            _rag_entry(
+                "redis hardening",
+                [
+                    {"text": "x" * 5000, "source": f"doc-{i}"}
+                    for i in range(10)
+                ],
+            )
+        ]
+
+        summary = WorkerAgent._build_summary(history)
+
+        assert len(summary) < 1200
+        assert "doc-0" in summary
+
+    def test_empty_results_are_reported_as_such(self) -> None:
+        summary = WorkerAgent._build_summary([_rag_entry("nothing here", [])])
+
+        assert "no results" in summary
+
+    def test_malformed_results_do_not_raise(self) -> None:
+        for payload in (None, "a string", [None], [{"source": "no text"}]):
+            summary = WorkerAgent._build_summary(
+                [_rag_entry("odd payload", payload)]
+            )
+            assert isinstance(summary, str) and summary
 
 
 class RecordingWorker:

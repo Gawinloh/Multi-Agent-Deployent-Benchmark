@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import structlog
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from src.schemas.agent import ToolCall, ToolObservation
 
@@ -54,6 +54,22 @@ class QueryRagInput(BaseModel):
     service: str | None = Field(
         default=None, description="optional filter: postgres | nginx | redis"
     )
+
+    @field_validator("service", mode="before")
+    @classmethod
+    def _coerce_service(cls, value: Any) -> str | None:
+        """Drop a non-string filter instead of rejecting the whole call.
+
+        Models pass values like a list of services or a bare null here. A
+        ValidationError cost the worker a whole iteration and taught it
+        nothing, so the filter degrades to None and the search runs
+        unfiltered — the same tolerance the corpus alias table applies to
+        unrecognised service names.
+        """
+        if value is None or isinstance(value, str):
+            return value
+        logger.warning("query_rag_service_coerced", received=repr(value)[:80])
+        return None
 
 
 class GenerateConfigInput(BaseModel):

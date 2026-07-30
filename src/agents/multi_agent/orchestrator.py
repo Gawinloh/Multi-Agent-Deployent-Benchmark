@@ -294,7 +294,10 @@ class OrchestratorAgent:
                     # 6. Record delegation
                     delegation_entry = {
                         "worker": target.value,
-                        "task": task_desc[:200],
+                        # 200 chars truncated every task at exactly the point
+                        # the appended security advice began, so the record
+                        # could not show whether routing had worked.
+                        "task": task_desc[:500],
                         "success": worker_result.success,
                         "summary": worker_result.summary,
                         # Kept so the run JSON can attribute cost per agent
