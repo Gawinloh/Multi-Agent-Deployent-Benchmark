@@ -31,6 +31,13 @@ from src.schemas.postgres import (
     PostgresSecurityParams,
     PostgresWALParams,
 )
+from src.schemas.rabbitmq import (
+    RabbitMQConfig,
+    RabbitMQManagementParams,
+    RabbitMQNetworkingParams,
+    RabbitMQResourceParams,
+    RabbitMQSecurityParams,
+)
 from src.schemas.redis import (
     RedisConfig,
     RedisMemoryParams,
@@ -53,16 +60,46 @@ from src.validator.docker_runner import (
 )
 
 
+def make_rabbitmq_config(
+    *,
+    tls: bool = False,
+    default_user: str = "appuser",
+    management_ip: str = "127.0.0.1",
+) -> RabbitMQConfig:
+    """A known-good RabbitMQConfig sized for the test harness.
+
+    default_user is deliberately not "guest", so the node never seeds the
+    well-known default account.
+    """
+    return RabbitMQConfig(
+        resources=RabbitMQResourceParams(
+            vm_memory_high_watermark=0.4, disk_free_limit="200MB"
+        ),
+        networking=RabbitMQNetworkingParams(max_connections=500, heartbeat=60),
+        security=RabbitMQSecurityParams(
+            default_user=default_user,
+            default_pass="harness-rabbit-pass",
+            tls_enabled=tls,
+            tls_verify_peer=False,
+        ),
+        management=RabbitMQManagementParams(listener_ip=management_ip),
+    )
+
+
 def make_spec(
     *,
     ssl: bool = False,
     redis_maxmemory: str = "256MB",
     requirepass: str | None = "harness-test-pass",
+    rabbitmq: bool = False,
 ) -> StackSpec:
     """A known-good StackSpec sized for the test harness.
 
     ssl defaults to False so the harness doesn't need certs; pg_hba uses
     'local trust' so exec'd psql works over the unix socket.
+
+    rabbitmq defaults to False so this stays the three-service stack
+    Study 1 deployed — the golden render fixtures are built from it.
     """
     return StackSpec(
         requirements=StackRequirements(
@@ -137,6 +174,7 @@ def make_spec(
             ),
             networking=RedisNetworkingParams(bind=["0.0.0.0"], port=6379),
         ),
+        rabbitmq=make_rabbitmq_config() if rabbitmq else None,
         pg_hba=PostgresHbaConfig(
             rules=[
                 PostgresHbaRule(
@@ -182,11 +220,15 @@ class TestRenderFiles:
         runner = StackRunner(run_id=run_id, workdir=tmp_path)
         compose = yaml.safe_load(runner.render_files(make_spec())["docker-compose.yml"])
 
-        assert set(compose["services"]) == set(SERVICES)
+        # make_spec() selects three of the four catalog services; rabbitmq
+        # is left unselected, so it must not appear.
+        selected = {"postgres", "redis", "nginx"}
+        assert selected < set(SERVICES)
+        assert set(compose["services"]) == selected
         assert f"net_{run_id}" in compose["networks"]
         assert f"pgdata_{run_id}" in compose["volumes"]
-        # resource limits present on every service
-        for service in SERVICES:
+        # resource limits present on every deployed service
+        for service in selected:
             limits = compose["services"][service]["deploy"]["resources"]["limits"]
             assert limits["memory"].endswith("M")
             assert float(limits["cpus"]) > 0

@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from src.schemas.nginx import NginxConfig
 from src.schemas.postgres import PostgresConfig, PostgresHbaConfig
+from src.schemas.rabbitmq import RabbitMQConfig
 from src.schemas.redis import RedisConfig
 
 
@@ -74,6 +75,7 @@ class StackSpec(BaseModel):
     postgres: PostgresConfig | None = None
     nginx: NginxConfig | None = None
     redis: RedisConfig | None = None
+    rabbitmq: RabbitMQConfig | None = None
     #: Coupled to postgres: required with it, forbidden without it.
     pg_hba: PostgresHbaConfig | None = None
 
@@ -85,10 +87,15 @@ class StackSpec(BaseModel):
         both would fail later and less legibly — an empty compose file,
         or a postgres container with no host-based authentication.
         """
-        if self.postgres is None and self.nginx is None and self.redis is None:
+        if (
+            self.postgres is None
+            and self.nginx is None
+            and self.redis is None
+            and self.rabbitmq is None
+        ):
             raise ValueError(
                 "a StackSpec must select at least one service "
-                "(postgres, nginx, redis)"
+                "(postgres, nginx, redis, rabbitmq)"
             )
         if self.postgres is not None and self.pg_hba is None:
             raise ValueError("pg_hba is required when postgres is selected")

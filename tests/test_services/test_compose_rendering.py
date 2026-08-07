@@ -18,7 +18,7 @@ from src.schemas.stack import StackSpec
 from src.services import catalog
 from src.tools.config_generator import _STACKSPEC_EXAMPLE, generate_config
 from src.validator.docker_runner import StackRunner
-from tests.test_validator.test_docker_runner import make_spec
+from tests.test_validator.test_docker_runner import make_rabbitmq_config, make_spec
 
 GOLDEN = Path(__file__).resolve().parents[1] / "fixtures" / "rendered-golden"
 
@@ -202,6 +202,129 @@ class TestSingleServiceStack:
         parsed = yaml.safe_load(compose)
         assert set(parsed["services"]) == {"postgres"}
         assert f"pgdata_{FIXTURE_RUN_ID}" in parsed["volumes"]
+
+
+class TestRabbitMQSelected:
+    @pytest.fixture
+    def compose(self, pinned_runner) -> str:
+        return pinned_runner().render_files(make_spec(rabbitmq=True))[
+            "docker-compose.yml"
+        ]
+
+    def test_all_four_services_present(self, compose: str) -> None:
+        parsed = yaml.safe_load(compose)
+        assert set(parsed["services"]) == {
+            "postgres", "redis", "rabbitmq", "nginx",
+        }
+
+    def test_declared_after_its_dependencies_and_before_nginx(
+        self, compose: str
+    ) -> None:
+        order = list(yaml.safe_load(compose)["services"])
+        assert order == ["postgres", "redis", "rabbitmq", "nginx"]
+
+    def test_healthcheck_drops_to_the_rabbitmq_user(self, compose: str) -> None:
+        """A root-run rabbitmq-diagnostics can create a root-owned
+        .erlang.cookie the broker cannot read, killing the node at startup."""
+        test = yaml.safe_load(compose)["services"]["rabbitmq"]["healthcheck"]["test"]
+        assert test == ["CMD-SHELL", "gosu rabbitmq rabbitmq-diagnostics -q ping"]
+
+    def test_startup_grace_is_longer_than_the_other_services(
+        self, compose: str
+    ) -> None:
+        services = yaml.safe_load(compose)["services"]
+        assert services["rabbitmq"]["healthcheck"]["start_period"] == "20s"
+        assert services["postgres"]["healthcheck"]["start_period"] == "10s"
+
+    def test_owns_a_named_volume(self, compose: str) -> None:
+        parsed = yaml.safe_load(compose)
+        assert f"rabbitmqdata_{FIXTURE_RUN_ID}" in parsed["volumes"]
+        assert f"pgdata_{FIXTURE_RUN_ID}" in parsed["volumes"]
+
+    def test_nginx_does_not_wait_on_the_queue(self, compose: str) -> None:
+        """Nothing in the palette depends on rabbitmq; adding it must not
+        change what nginx waits for."""
+        depends = yaml.safe_load(compose)["services"]["nginx"]["depends_on"]
+        assert set(depends) == {"postgres", "redis"}
+
+    def test_conf_rendered_and_mounted(self, pinned_runner) -> None:
+        rendered = pinned_runner().render_files(make_spec(rabbitmq=True))
+        assert "rabbitmq.conf" in rendered
+        assert "default_user = appuser" in rendered["rabbitmq.conf"]
+        mounts = yaml.safe_load(rendered["docker-compose.yml"])["services"][
+            "rabbitmq"
+        ]["volumes"]
+        assert "./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro" in mounts
+
+    def test_certs_mounted_only_when_tls_is_enabled(self, pinned_runner) -> None:
+        spec = make_spec().model_copy(
+            update={"rabbitmq": make_rabbitmq_config(tls=True)}
+        )
+        with_tls = yaml.safe_load(
+            pinned_runner().render_files(spec)["docker-compose.yml"]
+        )["services"]["rabbitmq"]["volumes"]
+        assert "./rabbitmq-certs:/etc/rabbitmq/certs:ro" in with_tls
+
+        without = yaml.safe_load(
+            pinned_runner().render_files(make_spec(rabbitmq=True))[
+                "docker-compose.yml"
+            ]
+        )["services"]["rabbitmq"]["volumes"]
+        assert not any("certs" in mount for mount in without)
+
+    def test_tls_certs_written_to_the_workdir(self, pinned_runner, tmp_path) -> None:
+        spec = make_spec().model_copy(
+            update={"rabbitmq": make_rabbitmq_config(tls=True)}
+        )
+        pinned_runner().write_files(spec)
+        certs = tmp_path / "rabbitmq-certs"
+        for name in ("server.crt", "server.key", "ca.crt"):
+            assert (certs / name).is_file(), name
+        # RabbitMQ needs a CA file even with verification off; the
+        # self-signed cert acts as its own issuer.
+        assert (certs / "ca.crt").read_text() == (certs / "server.crt").read_text()
+
+    def test_no_certs_written_without_tls(self, pinned_runner, tmp_path) -> None:
+        pinned_runner().write_files(make_spec(rabbitmq=True))
+        assert not (tmp_path / "rabbitmq-certs").exists()
+
+    def test_resource_limits_leave_room_for_the_others(self, compose: str) -> None:
+        """A 2GB host: postgres 50%, redis 25%, rabbitmq 25%, nginx 12.5%."""
+        services = yaml.safe_load(compose)["services"]
+        assert services["rabbitmq"]["deploy"]["resources"]["limits"]["memory"] == "512M"
+        assert services["postgres"]["deploy"]["resources"]["limits"]["memory"] == "1024M"
+
+
+class TestQueueNotSelected:
+    def test_two_service_stack_mentions_neither_queue_nor_cache(
+        self, pinned_runner
+    ) -> None:
+        """The Study 2 selection case: postgres + nginx only."""
+        spec = make_spec().model_copy(update={"redis": None})
+        compose = pinned_runner().render_files(spec)["docker-compose.yml"]
+        body = "\n".join(
+            line for line in compose.splitlines() if not line.lstrip().startswith("#")
+        )
+        assert "rabbitmq" not in body
+        assert "redis" not in body
+        assert set(yaml.safe_load(compose)["services"]) == {"postgres", "nginx"}
+
+    def test_queue_only_stack_renders(self, pinned_runner) -> None:
+        spec = make_spec().model_copy(
+            update={
+                "postgres": None,
+                "pg_hba": None,
+                "nginx": None,
+                "redis": None,
+                "rabbitmq": make_rabbitmq_config(),
+            }
+        )
+        parsed = yaml.safe_load(
+            pinned_runner().render_files(spec)["docker-compose.yml"]
+        )
+        assert set(parsed["services"]) == {"rabbitmq"}
+        assert f"rabbitmqdata_{FIXTURE_RUN_ID}" in parsed["volumes"]
+        assert "pgdata" not in str(parsed["volumes"])
 
 
 class TestStackSpecSelection:

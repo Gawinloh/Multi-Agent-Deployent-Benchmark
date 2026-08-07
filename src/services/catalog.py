@@ -7,14 +7,16 @@ untouched.
 
 Two orderings matter and they are deliberately different:
 
-* **Registry order** (postgres, nginx, redis) is the order
+* **Registry order** (postgres, nginx, redis, rabbitmq) is the order
   :func:`for_spec` returns, and therefore the order of benchmarks, smoke
   tests and CIS results in the validator report. It matches the existing
   hardcoded call order and the ground-truth block order in
-  ``src.experiment.result_logger``.
+  ``src.experiment.result_logger``. rabbitmq is appended rather than
+  slotted in so the first three keep the positions Study 1 recorded.
 * **Compose order** (:func:`compose_order`) is a topological sort over
   ``depends_on``, so a service is always declared after the services it
-  waits on. For the full palette this yields postgres, redis, nginx —
+  waits on. For the full palette this yields postgres, redis, rabbitmq,
+  nginx; for the original three it still yields postgres, redis, nginx,
   the order the hand-written template had.
 """
 
@@ -27,14 +29,17 @@ import structlog
 
 from src.schemas.nginx import NginxConfig
 from src.schemas.postgres import PostgresConfig
+from src.schemas.rabbitmq import RabbitMQConfig
 from src.schemas.redis import RedisConfig
 from src.schemas.validator_report import BenchmarkResult, SmokeTestResult
 from src.services.definition import ResourceShare, ServiceDefinition
 from src.validator.benchmarks.pgbench import run_pgbench
+from src.validator.benchmarks.rabbitmq_perf import run_rabbitmq_perf_test
 from src.validator.benchmarks.redis_bench import run_redis_benchmark
 from src.validator.benchmarks.wrk import run_wrk
 from src.validator.cis_checks.nginx import NginxCISChecker
 from src.validator.cis_checks.postgres import PostgresCISChecker
+from src.validator.cis_checks.rabbitmq import RabbitMQCISChecker
 from src.validator.cis_checks.redis import RedisCISChecker
 from src.validator.docker_runner import FRAGMENT_DIR, StackRunner, StackStartupError
 
@@ -260,6 +265,11 @@ def _redis_healthcheck(spec: StackSpec) -> str:
     return "redis-cli ping | grep -q PONG"
 
 
+# ---------------------------------------------------------------------------
+# redis
+# ---------------------------------------------------------------------------
+
+
 REDIS = ServiceDefinition(
     name="redis",
     config_schema=RedisConfig,
@@ -278,13 +288,119 @@ REDIS = ServiceDefinition(
 
 
 # ---------------------------------------------------------------------------
+# rabbitmq
+# ---------------------------------------------------------------------------
+
+
+def _rabbitmq_render(spec: StackSpec) -> dict[str, str]:
+    assert spec.rabbitmq is not None
+    return {"rabbitmq.conf": spec.rabbitmq.render_conf()}
+
+
+def _rabbitmq_smoke(runner: StackRunner, spec: StackSpec) -> SmokeTestResult:
+    """Probe the broker with its own health check.
+
+    Runs as the rabbitmq user for the same reason the compose
+    healthcheck does — a root-run Erlang CLI call can create a
+    root-owned .erlang.cookie the broker cannot read.
+    """
+    result = runner.exec_in(
+        "rabbitmq", ["gosu", "rabbitmq", "rabbitmq-diagnostics", "-q", "ping"]
+    )
+    output = result.stdout + result.stderr
+    ok = result.exit_code == 0 and "Ping succeeded" in output
+    return SmokeTestResult(
+        did_start=True,
+        accepts_connections=ok,
+        error_message=None if ok else (result.stderr or result.stdout)[:300],
+    )
+
+
+def _rabbitmq_benchmark(
+    runner: StackRunner, spec: StackSpec, duration_s: int
+) -> BenchmarkResult:
+    assert spec.rabbitmq is not None
+    return run_rabbitmq_perf_test(
+        runner,
+        duration_s=duration_s,
+        username=spec.rabbitmq.security.default_user,
+        password=spec.rabbitmq.security.default_pass,
+        port=spec.rabbitmq.networking.listener_port,
+    )
+
+
+def _rabbitmq_template_context(
+    spec: StackSpec, runner: StackRunner
+) -> dict[str, Any]:
+    assert spec.rabbitmq is not None
+    return {"rabbitmq_tls": spec.rabbitmq.security.tls_enabled}
+
+
+def _rabbitmq_prepare_workdir(spec: StackSpec, workdir: Path) -> None:
+    """Self-signed TLS material for the AMQPS listener. No-op without TLS.
+
+    RabbitMQ needs a CA file even when peer verification is off, so the
+    self-signed certificate is also written as ``ca.crt`` and acts as
+    its own issuer. Unlike postgres, RabbitMQ does not reject a
+    group-readable key, so no ownership dance is required — the files
+    are mounted read-only and the broker reads them as `rabbitmq`.
+    """
+    assert spec.rabbitmq is not None
+    if not spec.rabbitmq.security.tls_enabled:
+        return
+    certs_dir = workdir / "rabbitmq-certs"
+    certs_dir.mkdir(exist_ok=True)
+    key, crt = certs_dir / "server.key", certs_dir / "server.crt"
+    result = subprocess.run(
+        [
+            "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+            "-keyout", str(key), "-out", str(crt),
+            "-days", "2", "-subj", "/CN=rabbitmq",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    if result.returncode != 0:
+        raise StackStartupError(
+            f"openssl rabbitmq cert generation failed: {result.stderr}"
+        )
+    (certs_dir / "ca.crt").write_text(crt.read_text(encoding="utf-8"), encoding="utf-8")
+    for path in (key, crt, certs_dir / "ca.crt"):
+        path.chmod(0o644)
+
+
+RABBITMQ = ServiceDefinition(
+    name="rabbitmq",
+    config_schema=RabbitMQConfig,
+    spec_field="rabbitmq",
+    render=_rabbitmq_render,
+    cis_checker=RabbitMQCISChecker,
+    benchmark=_rabbitmq_benchmark,
+    smoke_test=_rabbitmq_smoke,
+    # Dropping to the rabbitmq user is load-bearing, not hygiene — see
+    # docker/services/rabbitmq.yml for the failure it prevents.
+    healthcheck=lambda spec: "gosu rabbitmq rabbitmq-diagnostics -q ping",
+    compose_fragment=_fragment("rabbitmq"),
+    compose_volumes="  rabbitmqdata_{{ run_id }}:",
+    template_context=_rabbitmq_template_context,
+    prepare_workdir=_rabbitmq_prepare_workdir,
+    corpus_service_tag="rabbitmq",
+    default_resource_share=ResourceShare(
+        memory_fraction=0.25, min_memory_mb=512, cpu_fraction=0.25, min_cpus=0.25
+    ),
+)
+
+
+# ---------------------------------------------------------------------------
 # The registry
 # ---------------------------------------------------------------------------
 
 #: Name to definition. Insertion order is the iteration order of
 #: :func:`for_spec` — see the module docstring.
 CATALOG: dict[str, ServiceDefinition] = {
-    definition.name: definition for definition in (POSTGRES, NGINX, REDIS)
+    definition.name: definition
+    for definition in (POSTGRES, NGINX, REDIS, RABBITMQ)
 }
 
 

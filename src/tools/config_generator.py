@@ -46,6 +46,7 @@ class GeneratedFiles:
     pg_hba_conf: str | None
     nginx_conf: str | None
     redis_conf: str | None
+    rabbitmq_conf: str | None
     spec: StackSpec
 
 
@@ -187,6 +188,7 @@ def _render(spec: StackSpec) -> GeneratedFiles:
         pg_hba_conf=files.get("pg_hba.conf"),
         nginx_conf=files.get("nginx.conf"),
         redis_conf=files.get("redis.conf"),
+        rabbitmq_conf=files.get("rabbitmq.conf"),
         spec=spec,
     )
 

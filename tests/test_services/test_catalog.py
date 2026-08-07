@@ -6,6 +6,7 @@ Compose assembly is covered separately in test_compose_rendering.py.
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
 
 import pytest
 from pydantic import BaseModel
@@ -19,7 +20,15 @@ from src.services.definition import ResourceShare, ServiceDefinition
 from src.validator.docker_runner import SERVICES
 from tests.test_validator.test_docker_runner import make_spec
 
-ALL_NAMES = ("postgres", "nginx", "redis")
+
+#: A spec selecting the whole palette, for the round-trip tests. Plain
+#: make_spec() is the three-service Study 1 stack and is used wherever
+#: the point is that adding rabbitmq changed nothing.
+def full_spec():
+    return make_spec(rabbitmq=True)
+
+
+ALL_NAMES = ("postgres", "nginx", "redis", "rabbitmq")
 
 
 class TestCatalogRoundTrip:
@@ -42,12 +51,12 @@ class TestCatalogRoundTrip:
     def test_spec_field_exists_and_holds_the_config_schema(self, name: str) -> None:
         definition = catalog.get(name)
         assert definition.spec_field in StackSpec.model_fields
-        config = definition.config_of(make_spec())
+        config = definition.config_of(full_spec())
         assert isinstance(config, definition.config_schema)
 
     @pytest.mark.parametrize("name", ALL_NAMES)
     def test_render_returns_non_empty_files(self, name: str) -> None:
-        rendered = catalog.get(name).render(make_spec())
+        rendered = catalog.get(name).render(full_spec())
         assert rendered
         for filename, content in rendered.items():
             assert filename.endswith(".conf")
@@ -71,7 +80,7 @@ class TestCatalogRoundTrip:
 
     @pytest.mark.parametrize("name", ALL_NAMES)
     def test_healthcheck_is_a_non_empty_command(self, name: str) -> None:
-        assert catalog.get(name).healthcheck(make_spec()).strip()
+        assert catalog.get(name).healthcheck(full_spec()).strip()
 
     @pytest.mark.parametrize("name", ALL_NAMES)
     def test_compose_fragment_declares_its_own_service(self, name: str) -> None:
@@ -79,11 +88,28 @@ class TestCatalogRoundTrip:
         assert fragment.startswith(f"  {name}:\n")
 
     @pytest.mark.parametrize("name", ALL_NAMES)
-    def test_corpus_tag_matches_the_rag_alias_table(self, name: str) -> None:
+    def test_corpus_tag_names_a_corpus_directory(self, name: str) -> None:
+        corpus = Path(__file__).resolve().parents[2] / "corpus"
+        tag = catalog.get(name).corpus_service_tag
+        directory = corpus / tag
+        assert directory.is_dir(), f"no corpus/{tag}/ for service {name}"
+        assert list(directory.glob("*.md")), f"corpus/{tag}/ has no documents"
+
+    @pytest.mark.parametrize("name", ("postgres", "nginx", "redis"))
+    def test_study1_tags_resolve_in_the_rag_alias_table(self, name: str) -> None:
         from src.rag.query import _SERVICE_ALIASES
 
         tag = catalog.get(name).corpus_service_tag
         assert _SERVICE_ALIASES[tag] == tag
+
+    def test_rabbitmq_is_absent_from_the_rag_alias_table(self) -> None:
+        """Deliberate: retrieval is frozen at Study 1 so that the only
+        difference in Study 2 is the selection task. corpus/rabbitmq/
+        exists on disk but is not in the live index, and an unrecognised
+        filter degrades to an unfiltered search rather than an empty one."""
+        from src.rag.query import _SERVICE_ALIASES
+
+        assert "rabbitmq" not in _SERVICE_ALIASES
 
     @pytest.mark.parametrize("name", ALL_NAMES)
     def test_resource_share_is_a_positive_fraction(self, name: str) -> None:
@@ -99,8 +125,8 @@ class TestCatalogRoundTrip:
                 assert dependency in catalog.CATALOG
 
     def test_get_rejects_an_unknown_service_by_name(self) -> None:
-        with pytest.raises(KeyError, match="unknown service 'rabbitmq'"):
-            catalog.get("rabbitmq")
+        with pytest.raises(KeyError, match="unknown service 'kafka'"):
+            catalog.get("kafka")
 
     def test_docker_runner_default_palette_matches_the_catalog(self) -> None:
         """SERVICES is a literal (the catalog imports docker_runner), so it
@@ -129,9 +155,13 @@ class TestResourceShare:
 
 
 class TestForSpec:
-    def test_returns_all_three_for_a_full_spec(self) -> None:
-        selected = catalog.for_spec(make_spec())
+    def test_returns_every_service_for_a_full_spec(self) -> None:
+        selected = catalog.for_spec(full_spec())
         assert [d.name for d in selected] == list(ALL_NAMES)
+
+    def test_study1_spec_selects_only_its_three_services(self) -> None:
+        selected = catalog.for_spec(make_spec())
+        assert [d.name for d in selected] == ["postgres", "nginx", "redis"]
 
     @pytest.mark.parametrize("absent", ["nginx", "redis"])
     def test_omits_an_unselected_service(self, absent: str) -> None:
@@ -158,9 +188,15 @@ class TestComposeOrder:
     def test_dependencies_precede_dependents(self) -> None:
         ordered = catalog.compose_order(catalog.all_services())
         names = [d.name for d in ordered]
-        assert names == ["postgres", "redis", "nginx"]
+        assert names == ["postgres", "redis", "rabbitmq", "nginx"]
         assert names.index("nginx") > names.index("postgres")
         assert names.index("nginx") > names.index("redis")
+
+    def test_original_three_keep_their_order(self) -> None:
+        """Adding rabbitmq must not reshuffle the stack Study 1 deployed."""
+        spec = make_spec()  # selects postgres, nginx, redis; no rabbitmq
+        ordered = catalog.compose_order(catalog.for_spec(spec))
+        assert [d.name for d in ordered] == ["postgres", "redis", "nginx"]
 
     def test_drops_edges_to_unselected_services(self) -> None:
         """nginx depends on postgres and redis, but deploying it alone is a

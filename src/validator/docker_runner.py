@@ -47,7 +47,7 @@ FRAGMENT_DIR = _DOCKER_DIR / "services"
 #: Duplicated here as a literal rather than derived from the catalog
 #: because the catalog imports this module; ``test_catalog.py`` asserts
 #: the two agree. Per-spec selection always comes from the catalog.
-SERVICES = ("postgres", "redis", "nginx")
+SERVICES = ("postgres", "redis", "rabbitmq", "nginx")
 
 _COMPOSE_TIMEOUT_S = 300
 

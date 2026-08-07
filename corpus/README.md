@@ -1,12 +1,20 @@
 # RAG corpus
 
-Authoritative documentation for the three target services. The agent
+Authoritative documentation for the catalog's services. The agent
 queries this corpus during reasoning via the `query_rag` tool. Index it
 with:
 
 ```bash
 python -m src.rag.build_index --corpus corpus/ --out rag_index/
 ```
+
+> **The committed `rag_index/` is frozen for Study 2 and must not be
+> rebuilt.** Retrieval is held identical to Study 1 so that the only
+> difference between the two studies is the service-selection task; a
+> re-indexed corpus would confound that comparison. `corpus/rabbitmq/`
+> is therefore present on disk but absent from the live index, and
+> `rabbitmq` is deliberately not in the `_SERVICE_ALIASES` table in
+> `src/rag/query.py`. Rebuild only as a deliberate, recorded decision.
 
 ## Directory structure
 
@@ -15,7 +23,10 @@ corpus/
   postgres/        PostgreSQL official docs (selected chapters), pgtune source/notes
   nginx/           nginx official docs (selected pages)
   redis/           Redis official docs (selected pages)
-  cis-benchmarks/  CIS PostgreSQL, nginx, Redis benchmarks (markdown extracts)
+  rabbitmq/        RabbitMQ official docs (selected pages)
+  cis-benchmarks/  CIS PostgreSQL, nginx, Redis benchmarks (markdown extracts).
+                   No CIS benchmark exists for RabbitMQ; its controls come
+                   from the vendor docs under rabbitmq/ instead.
   tuning-guides/   Crunchy/Percona/EDB PG guides, Mozilla SSL notes, Antirez Redis posts
 ```
 
@@ -31,7 +42,7 @@ Every document must start with YAML front matter:
 ---
 source: "PostgreSQL Documentation: Resource Consumption"   # required
 url: "https://www.postgresql.org/docs/16/runtime-config-resource.html"  # required
-service: "postgres"      # optional: postgres | nginx | redis (omit for cross-service docs)
+service: "postgres"      # optional: postgres | nginx | redis | rabbitmq (omit for cross-service docs)
 section: "memory"        # optional: free-form topic tag
 license: "PostgreSQL License"  # recommended; defaults to "unknown"
 ---

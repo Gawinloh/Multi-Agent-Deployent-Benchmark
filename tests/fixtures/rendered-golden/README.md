@@ -29,3 +29,15 @@ clamping is disabled (it depends on the Docker daemon's reported RAM).
 **Do not regenerate these files to make a failing test pass.** A diff
 here is the test doing its job. Update them only alongside a deliberate,
 documented change to what the harness deploys.
+
+## Change log
+
+Every *deployed* file above is still byte-for-byte what commit `5a3182c`
+produced. One file has been regenerated:
+
+- **`generate_config/spec.json`**, when the RabbitMQ service definition
+  was added. It is a dump of the `StackSpec` object, not a deployed
+  artefact, so a new optional field appears in it as `"rabbitmq": null`.
+  The four `.conf` files it sits beside, and all three `docker-compose.yml`
+  variants, were unchanged by that work — which is the property the
+  three-service stack actually has to preserve.

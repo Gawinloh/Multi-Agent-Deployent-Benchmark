@@ -119,6 +119,32 @@ def final_spec() -> dict[str, Any]:
             },
             "networking": {"bind": ["127.0.0.1"], "port": 6379, "tls_port": None},
         },
+        "rabbitmq": {
+            "resources": {
+                "vm_memory_high_watermark": 0.4,
+                "vm_memory_high_watermark_paging_ratio": 0.5,
+                "disk_free_limit": "2GB",
+            },
+            "networking": {
+                "listener_port": 5672,
+                "listener_ip": "0.0.0.0",
+                "max_connections": 500,
+                "heartbeat": 60,
+            },
+            "security": {
+                "default_user": "appuser",
+                "default_pass": "a-long-enough-password",
+                "loopback_users": ["guest"],
+                "tls_enabled": False,
+                "tls_port": 5671,
+                "tls_verify_peer": False,
+            },
+            "management": {
+                "enabled": True,
+                "port": 15672,
+                "listener_ip": "127.0.0.1",
+            },
+        },
         "pg_hba": {
             "rules": [
                 {

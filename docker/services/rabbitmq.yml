@@ -1,0 +1,36 @@
+  rabbitmq:
+    image: rabbitmq:4-management
+    volumes:
+      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+{%- if rabbitmq_tls %}
+      - ./rabbitmq-certs:/etc/rabbitmq/certs:ro
+{%- endif %}
+      - rabbitmqdata_{{ run_id }}:/var/lib/rabbitmq
+    healthcheck:
+      # Run as `rabbitmq`, never as root. RabbitMQ's CLI tools are Erlang
+      # nodes that read — and if it is missing, CREATE — the shared
+      # $HOME/.erlang.cookie. `docker exec` runs as root, so a root-run
+      # healthcheck firing before the broker has written its own cookie
+      # leaves a root-owned 0400 file that the broker (running as
+      # `rabbitmq`) cannot read, and the node dies at startup with
+      # "Error when reading /var/lib/rabbitmq/.erlang.cookie: eacces".
+      # Reproduced consistently; dropping privileges removes the race.
+      test: ["CMD-SHELL", "{{ healthcheck }}"]
+      interval: 2s
+      timeout: 10s
+      retries: 45
+      start_period: 20s
+{%- if depends_on %}
+    depends_on:
+{%- for dependency in depends_on %}
+      {{ dependency }}:
+        condition: service_healthy
+{%- endfor %}
+{%- endif %}
+    deploy:
+      resources:
+        limits:
+          memory: {{ mem_mb }}M
+          cpus: "{{ cpus }}"
+    networks:
+      - net_{{ run_id }}

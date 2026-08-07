@@ -1,14 +1,24 @@
-"""Deterministic CIS Benchmark Level 1 checks for the deployed stack.
+"""Deterministic security checks for the deployed stack.
 
 These checks are the ground truth for the dissertation's H2 (safety)
-hypothesis. Control IDs are adapted from the CIS PostgreSQL, CIS nginx,
-and CIS Redis Benchmarks; each check's docstring cites the benchmark
-section it implements. No LLM involvement; everything is deterministic
-Python run against a deployed :class:`~src.validator.docker_runner.StackRunner`.
+hypothesis. Control IDs for postgres, nginx and redis are adapted from
+the CIS PostgreSQL, CIS nginx and CIS Redis Benchmarks; each check's
+docstring cites the benchmark section it implements. No LLM involvement;
+everything is deterministic Python run against a deployed
+:class:`~src.validator.docker_runner.StackRunner`.
+
+**RabbitMQ is the exception and must be reported as such.** No CIS
+Benchmark for RabbitMQ exists, so its controls are derived from
+RabbitMQ's own Production Checklist and hardening documentation, with
+project-assigned IDs. This is the documented methodology fallback; a
+RabbitMQ score is a vendor-derived security-baseline score, not a CIS
+score, and pooling the two without saying so would misdescribe the
+measure.
 """
 
 from src.validator.cis_checks.nginx import NginxCISChecker
 from src.validator.cis_checks.postgres import PostgresCISChecker
+from src.validator.cis_checks.rabbitmq import RabbitMQCISChecker
 from src.validator.cis_checks.redis import RedisCISChecker
 
 #: Controls no agent can satisfy through the interface it is given, mapped
@@ -48,6 +58,21 @@ UNREACHABLE_CONTROLS: dict[str, str] = {
         "PostgresConfig exposes no statement_timeout field, so the value "
         "cannot be set by any specification."
     ),
+    "rabbitmq 2.5": (
+        "RabbitMQ seeds default_user as an administrator on the '/' vhost, "
+        "and RabbitMQConfig exposes no vhost, permission or user-tag fields, "
+        "so no specification can produce a least-privilege application user."
+    ),
+    "rabbitmq 3.3": (
+        "The harness deploys rabbitmq:4-management, which enables the "
+        "rabbitmq_management plugin at image build time. No specification "
+        "can unload it; RabbitMQConfig can only move its listener (3.1/3.2)."
+    ),
+    "rabbitmq 6.1": (
+        "RabbitMQConfig exposes no distribution.listener.* fields, so the "
+        "Erlang distribution port stays on the image default and no "
+        "specification can restrict or move it."
+    ),
 }
 
 #: Controls that no pilot run passed but which remain in scope, with the
@@ -63,6 +88,12 @@ REACHABLE_BUT_UNUSED: dict[str, str] = {
         "rename_commands is a schema field and render_conf emits "
         "rename-command lines from it. No pilot run populated it."
     ),
+    "rabbitmq 5.2": (
+        "tls_enabled and tls_verify_peer are both schema fields, so a "
+        "specification can enable an AMQPS listener with verify_peer. It is "
+        "a demanding control — the client must then present a certificate — "
+        "but it is reachable, so it stays in the denominator."
+    ),
 }
 
 
@@ -76,6 +107,7 @@ __all__ = [
     "UNREACHABLE_CONTROLS",
     "NginxCISChecker",
     "PostgresCISChecker",
+    "RabbitMQCISChecker",
     "RedisCISChecker",
     "is_actionable",
 ]

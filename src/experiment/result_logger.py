@@ -335,6 +335,46 @@ GROUND_TRUTH_PARAMETER_MAP: dict[str, dict[str, _Param]] = {
         "port": _Param("redis.networking.port"),
         "tls_port": _Param("redis.networking.tls_port"),
     },
+    # No Study 1 scenario carries an expected_rabbitmq block, so this
+    # table is inert for the frozen dataset — the scorer skips a block
+    # its ground truth does not mention. It exists so that a Study 2
+    # scenario asserting queue parameters is scored rather than logged
+    # as `unmapped` and dropped from the denominator.
+    "expected_rabbitmq": {
+        # Resource alarms
+        "vm_memory_high_watermark": _Param(
+            "rabbitmq.resources.vm_memory_high_watermark"
+        ),
+        "vm_memory_high_watermark_paging_ratio": _Param(
+            "rabbitmq.resources.vm_memory_high_watermark_paging_ratio"
+        ),
+        "disk_free_limit": _Param(
+            "rabbitmq.resources.disk_free_limit", is_size=True
+        ),
+        # Networking
+        "listener_port": _Param("rabbitmq.networking.listener_port"),
+        "listener_ip": _Param("rabbitmq.networking.listener_ip"),
+        "max_connections": _Param("rabbitmq.networking.max_connections"),
+        "max_connections_set": _Param(
+            "rabbitmq.networking.max_connections", adapter=_is_set
+        ),
+        "heartbeat": _Param("rabbitmq.networking.heartbeat"),
+        # Security (RabbitMQ Production Checklist)
+        "default_user": _Param("rabbitmq.security.default_user"),
+        "default_user_not_guest": _Param(
+            "rabbitmq.security.default_user", adapter=lambda v: v != "guest"
+        ),
+        "default_pass_set": _Param(
+            "rabbitmq.security.default_pass", adapter=_is_set
+        ),
+        "tls_enabled": _Param("rabbitmq.security.tls_enabled"),
+        "tls_port": _Param("rabbitmq.security.tls_port"),
+        "tls_verify_peer": _Param("rabbitmq.security.tls_verify_peer"),
+        # Management surface
+        "management_enabled": _Param("rabbitmq.management.enabled"),
+        "management_port": _Param("rabbitmq.management.port"),
+        "management_listener_ip": _Param("rabbitmq.management.listener_ip"),
+    },
 }
 
 #: Comparison suffixes, longest first so stripping is unambiguous.
