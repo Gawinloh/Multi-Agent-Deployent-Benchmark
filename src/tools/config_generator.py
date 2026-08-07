@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import structlog
 
 from src.schemas.stack import StackSpec
+from src.services.catalog import for_spec
 
 if TYPE_CHECKING:
     from src.llm.client import LLMClient
@@ -34,12 +35,17 @@ class GeneratedFiles:
 
     Does NOT include docker-compose.yml — the validator harness renders
     its own via the Jinja template (single source of truth).
+
+    A field is ``None`` when its service was not selected in the spec.
+    The fields are named one-per-file rather than being a dict because
+    the agent prompts document these exact keys; a new service in the
+    catalog needs a field added here alongside.
     """
 
-    postgresql_conf: str
-    pg_hba_conf: str
-    nginx_conf: str
-    redis_conf: str
+    postgresql_conf: str | None
+    pg_hba_conf: str | None
+    nginx_conf: str | None
+    redis_conf: str | None
     spec: StackSpec
 
 
@@ -168,12 +174,19 @@ _COMPLETION_SYSTEM = (
 
 
 def _render(spec: StackSpec) -> GeneratedFiles:
-    """Deterministic render from a fully-validated StackSpec."""
+    """Deterministic render from a fully-validated StackSpec.
+
+    Each selected service renders its own files through its catalog
+    definition; services the spec left as ``None`` render nothing.
+    """
+    files: dict[str, str] = {}
+    for definition in for_spec(spec):
+        files.update(definition.render(spec))
     return GeneratedFiles(
-        postgresql_conf=spec.postgres.render_conf(),
-        pg_hba_conf=spec.pg_hba.render_hba(),
-        nginx_conf=spec.nginx.render_conf(),
-        redis_conf=spec.redis.render_conf(),
+        postgresql_conf=files.get("postgresql.conf"),
+        pg_hba_conf=files.get("pg_hba.conf"),
+        nginx_conf=files.get("nginx.conf"),
+        redis_conf=files.get("redis.conf"),
         spec=spec,
     )
 

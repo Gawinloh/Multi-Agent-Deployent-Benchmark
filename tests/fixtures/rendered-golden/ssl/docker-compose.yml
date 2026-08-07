@@ -1,0 +1,104 @@
+# docker-compose Jinja2 template — rendered by src/validator/docker_runner.py.
+# Do not `docker compose up` this file directly; it contains template variables.
+#
+# Design notes:
+# - Each run gets its own bridge network and named volume (suffixed with
+#   run_id) so concurrent runs never collide.
+# - nginx host ports are parameterised (defaults 8080/8443) instead of
+#   80/443 so multiple stacks can coexist and no root privileges are needed.
+# - deploy.resources.limits are populated from the StackSpec's
+#   HardwareConstraints by the runner.
+# - Healthchecks: pg_isready (postgres), curl (nginx), redis-cli ping
+#   (redis; the exact command is computed by the runner because it may
+#   need the requirepass password).
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: "fixture-postgres-password"
+    volumes:
+      - ./postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      # Staged under /tmp, not mounted into place directly. A bind-mounted
+      # key does not arrive owned by root or by postgres, and the server
+      # refuses to start on a key with group access it does not own.
+      - ./certs/server.crt:/tmp/certs/server.crt:ro
+      - ./certs/server.key:/tmp/certs/server.key:ro
+      - pgdata_fixture0001:/var/lib/postgresql/data
+    # Runs as root before the stock entrypoint drops privileges, so the
+    # certs can be copied in with the ownership and mode postgres demands
+    # (u=rw for the database user), then hands over unchanged.
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        set -e
+        install -o postgres -g postgres -m 0600 /tmp/certs/server.key /var/lib/postgresql/server.key
+        install -o postgres -g postgres -m 0644 /tmp/certs/server.crt /var/lib/postgresql/server.crt
+        exec /usr/local/bin/docker-entrypoint.sh postgres -c config_file=/etc/postgresql/postgresql.conf -c hba_file=/etc/postgresql/pg_hba.conf -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+          cpus: "1.0"
+    networks:
+      - net_fixture0001
+
+  redis:
+    image: redis:7
+    volumes:
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
+    command: redis-server /usr/local/etc/redis/redis.conf
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a 'harness-test-pass' ping | grep -q PONG"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+    networks:
+      - net_fixture0001
+
+  nginx:
+    image: nginx:1.27
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./html:/usr/share/nginx/html:ro
+    ports:
+      - "8080:80"
+      - "8443:443"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost/ || exit 1"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    networks:
+      - net_fixture0001
+
+volumes:
+  pgdata_fixture0001:
+
+networks:
+  net_fixture0001:
+    driver: bridge
+    name: stack_fixture0001_net

@@ -35,6 +35,7 @@ from src.experiment.result_logger import (
     compute_scores,
     save,
 )
+from src.services.catalog import for_spec
 
 logger = structlog.get_logger(__name__)
 
@@ -104,6 +105,9 @@ def _run_single(
 
         if agent_result.final_spec:
             run_result.final_spec = agent_result.final_spec.model_dump(mode="json")
+            run_result.services_deployed = [
+                definition.name for definition in for_spec(agent_result.final_spec)
+            ]
         if agent_result.validator_report:
             run_result.validator_report = agent_result.validator_report.model_dump(mode="json")
 
@@ -164,6 +168,9 @@ def _run_multi(
 
         if agent_result.final_spec:
             run_result.final_spec = agent_result.final_spec.model_dump(mode="json")
+            run_result.services_deployed = [
+                definition.name for definition in for_spec(agent_result.final_spec)
+            ]
         if agent_result.validator_report:
             run_result.validator_report = agent_result.validator_report.model_dump(mode="json")
 

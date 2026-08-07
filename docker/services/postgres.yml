@@ -1,0 +1,50 @@
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: "{{ postgres_password }}"
+    volumes:
+      - ./postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+{%- if postgres_ssl %}
+      # Staged under /tmp, not mounted into place directly. A bind-mounted
+      # key does not arrive owned by root or by postgres, and the server
+      # refuses to start on a key with group access it does not own.
+      - ./certs/server.crt:/tmp/certs/server.crt:ro
+      - ./certs/server.key:/tmp/certs/server.key:ro
+{%- endif %}
+      - pgdata_{{ run_id }}:/var/lib/postgresql/data
+{%- if postgres_ssl %}
+    # Runs as root before the stock entrypoint drops privileges, so the
+    # certs can be copied in with the ownership and mode postgres demands
+    # (u=rw for the database user), then hands over unchanged.
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        set -e
+        install -o postgres -g postgres -m 0600 /tmp/certs/server.key /var/lib/postgresql/server.key
+        install -o postgres -g postgres -m 0644 /tmp/certs/server.crt /var/lib/postgresql/server.crt
+        exec /usr/local/bin/docker-entrypoint.sh {{ postgres_command }}
+{%- else %}
+    command: {{ postgres_command }}
+{%- endif %}
+    healthcheck:
+      test: ["CMD-SHELL", "{{ healthcheck }}"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+{%- if depends_on %}
+    depends_on:
+{%- for dependency in depends_on %}
+      {{ dependency }}:
+        condition: service_healthy
+{%- endfor %}
+{%- endif %}
+    deploy:
+      resources:
+        limits:
+          memory: {{ mem_mb }}M
+          cpus: "{{ cpus }}"
+    networks:
+      - net_{{ run_id }}

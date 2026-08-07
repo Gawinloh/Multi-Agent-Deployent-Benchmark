@@ -7,10 +7,12 @@ checkers). The full-stack tests require Docker and are marked
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import pytest
 
+import src.services.catalog as catalog
 import src.validator.runner as runner_module
 from src.schemas.validator_report import BenchmarkResult, CISCheckResult
 from src.validator.benchmarks.pgbench import parse_pgbench_output
@@ -156,6 +158,7 @@ class FakeStackRunner:
         self.down_called = False
         self.postgres_password = "pw"
         self.network_name = f"stack_{run_id}_net"
+        self.services = ("postgres", "redis", "nginx")
         FakeStackRunner.instances.append(self)
 
     _tmpdir = "."
@@ -186,16 +189,18 @@ class FakeStackRunner:
 
 @pytest.fixture
 def mocked_pipeline(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    """Patch StackRunner, benchmarks, and CIS checkers in the runner module."""
+    """Patch StackRunner, and every catalog benchmark and CIS checker.
+
+    The pipeline now discovers benchmarks and checkers through the
+    service catalog rather than importing them, so the doubles are
+    swapped onto the definitions themselves.
+    """
     FakeStackRunner.instances = []
     FakeStackRunner.fail_up = None
     FakeStackRunner._tmpdir = str(tmp_path)
     monkeypatch.setattr(runner_module, "StackRunner", FakeStackRunner)
 
     ok_bench = BenchmarkResult(throughput=100.0, latency_p50=1.0)
-    monkeypatch.setattr(runner_module, "run_pgbench", lambda *a, **k: ok_bench)
-    monkeypatch.setattr(runner_module, "run_wrk", lambda *a, **k: ok_bench)
-    monkeypatch.setattr(runner_module, "run_redis_benchmark", lambda *a, **k: ok_bench)
 
     def fake_checker(service: str):
         class _Checker:
@@ -211,9 +216,16 @@ def mocked_pipeline(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
 
         return _Checker
 
-    monkeypatch.setattr(runner_module, "PostgresCISChecker", fake_checker("postgres"))
-    monkeypatch.setattr(runner_module, "NginxCISChecker", fake_checker("nginx"))
-    monkeypatch.setattr(runner_module, "RedisCISChecker", fake_checker("redis"))
+    for name, definition in catalog.CATALOG.items():
+        monkeypatch.setitem(
+            catalog.CATALOG,
+            name,
+            dataclasses.replace(
+                definition,
+                benchmark=lambda *a, **k: ok_bench,
+                cis_checker=fake_checker(name),
+            ),
+        )
     return FakeStackRunner
 
 

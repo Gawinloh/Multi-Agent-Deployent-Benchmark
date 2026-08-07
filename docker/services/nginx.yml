@@ -1,0 +1,27 @@
+  nginx:
+    image: nginx:1.27
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./html:/usr/share/nginx/html:ro
+    ports:
+      - "{{ nginx_http_port }}:80"
+      - "{{ nginx_https_port }}:443"
+    healthcheck:
+      test: ["CMD-SHELL", "{{ healthcheck }}"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+{%- if depends_on %}
+    depends_on:
+{%- for dependency in depends_on %}
+      {{ dependency }}:
+        condition: service_healthy
+{%- endfor %}
+{%- endif %}
+    deploy:
+      resources:
+        limits:
+          memory: {{ mem_mb }}M
+          cpus: "{{ cpus }}"
+    networks:
+      - net_{{ run_id }}

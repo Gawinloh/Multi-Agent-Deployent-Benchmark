@@ -53,6 +53,12 @@ class RunResult:
     wall_clock_s: float = 0.0
     max_iterations: int = 25
     termination_reason: str = ""
+    #: Catalog services the final spec selected, in registry order.
+    #: Empty when the run produced no spec. Study 1 runs predate service
+    #: selection and always deployed the full palette, so their stored
+    #: records have no such key — code reading this field across
+    #: datasets must tolerate its absence.
+    services_deployed: list[str] = field(default_factory=list)
     final_spec: dict[str, Any] | None = None
     validator_report: dict[str, Any] | None = None
     history: list[dict[str, Any]] = field(default_factory=list)
@@ -447,6 +453,14 @@ def score_configuration_correctness(
     - A parameter the spec never set counts as a **failure**, not as an
       exclusion, so an agent cannot raise its score by omitting hard
       parameters.
+    - This includes every parameter of a service the spec did not select
+      at all. A ground-truth block is **never** skipped because its
+      service is ``None``: "we chose not to deploy redis" and "redis was
+      required and is missing" are the same outcome to this metric,
+      which asserts what the scenario needed. Scoring the *selection*
+      decision itself is a separate metric (L2 of the extensibility
+      plan) and deliberately does not live here — folding it in would
+      silently change every Study 1 number.
     - A run that never finalised (``final_spec is None``) returns ``None``
       and therefore contributes **no** ``correctness`` key at all. Absent
       and wrong are different outcomes, and scoring an unfinished run as
@@ -507,7 +521,9 @@ def score_configuration_correctness(
 
             if raw is _MISSING or raw is None:
                 # Never configured — a failure, and distinguishable in the
-                # details by its "missing" status.
+                # details by its "missing" status. An unselected service
+                # lands here too: its spec field is None, so the walk
+                # stops at the first path segment.
                 details.append(
                     {**entry, "actual": None, "passed": False, "status": "missing"}
                 )

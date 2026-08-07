@@ -28,13 +28,8 @@ from src.schemas.validator_report import (
     SmokeTestResult,
     ValidatorReport,
 )
-from src.validator.benchmarks.pgbench import run_pgbench
-from src.validator.benchmarks.redis_bench import run_redis_benchmark
-from src.validator.benchmarks.wrk import run_wrk
-from src.validator.cis_checks.nginx import NginxCISChecker
-from src.validator.cis_checks.postgres import PostgresCISChecker
-from src.validator.cis_checks.redis import RedisCISChecker
-from src.validator.docker_runner import SERVICES, StackRunner, StackStartupError
+from src.services.catalog import for_spec
+from src.validator.docker_runner import StackRunner, StackStartupError
 
 logger = structlog.get_logger(__name__)
 
@@ -48,38 +43,16 @@ def _now() -> datetime:
 def _run_smoke_tests(
     runner: StackRunner, spec: StackSpec
 ) -> dict[str, SmokeTestResult]:
-    """Probe each running service for connection acceptance."""
-    results: dict[str, SmokeTestResult] = {}
+    """Probe each *selected* service for connection acceptance.
 
-    pg = runner.exec_in(
-        "postgres",
-        ["psql", "-h", "127.0.0.1", "-U", "postgres", "-tAc", "SELECT 1"],
-        environment={"PGPASSWORD": runner.postgres_password},
-    )
-    pg_ok = pg.exit_code == 0 and "1" in pg.stdout
-    results["postgres"] = SmokeTestResult(
-        did_start=True,
-        accepts_connections=pg_ok,
-        error_message=None if pg_ok else (pg.stderr or pg.stdout)[:300],
-    )
-
-    ng = runner.exec_in("nginx", ["curl", "-fsS", "http://localhost/"])
-    results["nginx"] = SmokeTestResult(
-        did_start=True,
-        accepts_connections=ng.exit_code == 0,
-        error_message=None if ng.exit_code == 0 else (ng.stderr or ng.stdout)[:300],
-    )
-
-    password = spec.redis.security.requirepass
-    ping = ["redis-cli", *(["-a", password] if password else []), "ping"]
-    rd = runner.exec_in("redis", ping)
-    rd_ok = rd.exit_code == 0 and "PONG" in rd.stdout
-    results["redis"] = SmokeTestResult(
-        did_start=True,
-        accepts_connections=rd_ok,
-        error_message=None if rd_ok else (rd.stderr or rd.stdout)[:300],
-    )
-    return results
+    Services the spec did not select are absent from the result, so they
+    neither pass nor fail: ``smoke_pass_rate`` is a fraction of what was
+    actually deployed.
+    """
+    return {
+        definition.name: definition.smoke_test(runner, spec)
+        for definition in for_spec(spec)
+    }
 
 
 def _parse_healthchecks(compose_path: Path) -> dict[str, HealthcheckResult]:
@@ -120,7 +93,7 @@ def _startup_failure_report(
             accepts_connections=False,
             error_message=(exc.logs.get(service) or str(exc))[-300:],
         )
-        for service in SERVICES
+        for service in runner.services
     }
     return ValidatorReport(
         timestamp=_now(), smoke_tests=smoke, error=f"startup failed: {exc}"
@@ -162,28 +135,20 @@ def validate_config(spec: StackSpec, budget_seconds: int = 120) -> ValidatorRepo
         log.info("smoke_tests_done", passed=sum(r.passed for r in smoke.values()))
 
         # benchmarks run sequentially to avoid interference
+        selected = for_spec(spec)
         benchmarks: dict[str, BenchmarkResult] = {}
         bench_duration = max(min(10, budget_seconds // 12), 3)
-        for service, bench in (
-            ("postgres", lambda: run_pgbench(runner, duration_s=bench_duration)),
-            ("nginx", lambda: run_wrk(runner, duration_s=bench_duration)),
-            (
-                "redis",
-                lambda: run_redis_benchmark(
-                    runner,
-                    duration_s=bench_duration,
-                    password=spec.redis.security.requirepass,
-                ),
-            ),
-        ):
-            benchmarks[service] = (
-                bench() if time_left() else BenchmarkResult(error_message=_SKIPPED)
+        for definition in selected:
+            benchmarks[definition.name] = (
+                definition.benchmark(runner, spec, bench_duration)
+                if time_left()
+                else BenchmarkResult(error_message=_SKIPPED)
             )
 
         cis_results = []
-        for checker_cls in (PostgresCISChecker, NginxCISChecker, RedisCISChecker):
+        for definition in selected:
             if time_left():
-                cis_results.extend(checker_cls(runner).run_all())
+                cis_results.extend(definition.cis_checker(runner).run_all())
 
         healthchecks = _parse_healthchecks(runner.workdir / "docker-compose.yml")
 

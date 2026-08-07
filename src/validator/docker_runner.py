@@ -33,23 +33,28 @@ from jinja2 import StrictUndefined, Template
 
 from src.schemas.stack import StackSpec
 
-TEMPLATE_PATH = Path(__file__).resolve().parents[2] / "docker" / "compose-template.yml"
+_DOCKER_DIR = Path(__file__).resolve().parents[2] / "docker"
 
-#: Compose service names, also used for container lookup by label.
+TEMPLATE_PATH = _DOCKER_DIR / "compose-template.yml"
+
+#: Per-service compose fragments, one file per catalog service. Read by
+#: src/services/catalog.py, which owns the mapping from service name to
+#: fragment; the runner only assembles what the catalog hands it.
+FRAGMENT_DIR = _DOCKER_DIR / "services"
+
+#: The full palette in compose order, used as the default when no spec
+#: has been rendered yet (container lookup by label, log collection).
+#: Duplicated here as a literal rather than derived from the catalog
+#: because the catalog imports this module; ``test_catalog.py`` asserts
+#: the two agree. Per-spec selection always comes from the catalog.
 SERVICES = ("postgres", "redis", "nginx")
 
 _COMPOSE_TIMEOUT_S = 300
 
-#: Share of the Docker daemon's memory the three containers may request
-#: in total. The remainder covers daemon overhead and the page cache.
+#: Share of the Docker daemon's memory the deployed containers may
+#: request in total. The remainder covers daemon overhead and the page
+#: cache.
 _HOST_MEMORY_HEADROOM = 0.75
-
-#: Floors below which a container will not start reliably.
-_MIN_CONTAINER_MEMORY_MB = {
-    "pg_mem_mb": 512,
-    "redis_mem_mb": 256,
-    "nginx_mem_mb": 128,
-}
 
 
 @dataclass(frozen=True)
@@ -102,6 +107,7 @@ class StackRunner:
         self._nginx_http_port = nginx_http_port
         self._nginx_https_port = nginx_https_port
         self._postgres_password = secrets.token_hex(16)
+        self._services: tuple[str, ...] = SERVICES
         self._docker_client: Any = None
         self._log = structlog.get_logger(__name__).bind(run_id=self.run_id)
 
@@ -109,6 +115,27 @@ class StackRunner:
     def postgres_password(self) -> str:
         """The generated POSTGRES_PASSWORD for this run (used by benchmarks)."""
         return self._postgres_password
+
+    @property
+    def nginx_http_port(self) -> int:
+        """Host port mapped to nginx's :80."""
+        return self._nginx_http_port
+
+    @property
+    def nginx_https_port(self) -> int:
+        """Host port mapped to nginx's :443."""
+        return self._nginx_https_port
+
+    @property
+    def services(self) -> tuple[str, ...]:
+        """Services this run deploys, in compose order.
+
+        The full palette until a spec has been rendered, then exactly
+        the services that spec selected. Health polling and log
+        collection use this, so an unselected service is never waited
+        on and never reported as a missing container.
+        """
+        return self._services
 
     @property
     def network_name(self) -> str:
@@ -135,7 +162,9 @@ class StackRunner:
             self._log.debug("host_memory_probe_failed", error=str(exc)[:120])
             return None
 
-    def _clamp_to_host(self, limits_mb: dict[str, int]) -> dict[str, int]:
+    def _clamp_to_host(
+        self, limits_mb: dict[str, int], floors_mb: dict[str, int]
+    ) -> dict[str, int]:
         """Scale container memory limits down to fit the Docker host.
 
         Scenarios describe hypothetical hosts that may be larger than the
@@ -155,7 +184,7 @@ class StackRunner:
             return limits_mb
         factor = budget / requested
         clamped = {
-            key: max(int(value * factor), _MIN_CONTAINER_MEMORY_MB[key])
+            key: max(int(value * factor), floors_mb[key])
             for key, value in limits_mb.items()
         }
         self._log.warning(
@@ -168,101 +197,106 @@ class StackRunner:
         )
         return clamped
 
+    @staticmethod
+    def _render_jinja(source: str, context: dict[str, Any]) -> str:
+        return Template(source, undefined=StrictUndefined).render(**context)
+
     def _template_context(self, spec: StackSpec) -> dict[str, Any]:
+        """Build the skeleton's context by assembling per-service blocks.
+
+        The runner no longer knows what a postgres or an nginx is: it
+        asks the catalog which services *spec* selects, renders each
+        one's fragment with that service's own healthcheck, resource
+        limits and (filtered) dependency edges, and concatenates them in
+        dependency order.
+        """
+        from src.services.catalog import compose_order, depends_on_for, for_spec
+
+        selected = for_spec(spec)
+        ordered = compose_order(selected)
         hw = spec.requirements.hardware
         ram_mb = hw.ram_gb * 1024
-        redis_password = spec.redis.security.requirepass
-        redis_health_cmd = (
-            f"redis-cli -a '{redis_password}' ping | grep -q PONG"
-            if redis_password
-            else "redis-cli ping | grep -q PONG"
+
+        shares = {definition.name: definition.default_resource_share for definition in ordered}
+        memory_mb = self._clamp_to_host(
+            {name: share.memory_mb(ram_mb) for name, share in shares.items()},
+            {name: share.min_memory_mb for name, share in shares.items()},
         )
-        postgres_command = (
-            "postgres -c config_file=/etc/postgresql/postgresql.conf"
-            " -c hba_file=/etc/postgresql/pg_hba.conf"
-        )
-        if spec.postgres.security.ssl:
-            postgres_command += (
-                " -c ssl_cert_file=/var/lib/postgresql/server.crt"
-                " -c ssl_key_file=/var/lib/postgresql/server.key"
-            )
-        return {
-            "run_id": self.run_id,
-            "postgres_password": self._postgres_password,
-            "postgres_ssl": spec.postgres.security.ssl,
-            "postgres_command": postgres_command,
-            "redis_health_cmd": redis_health_cmd,
-            **self._clamp_to_host(
+
+        # Services contribute their own extra variables (postgres's
+        # password and start command, nginx's host ports).
+        context: dict[str, Any] = {"run_id": self.run_id}
+        for definition in ordered:
+            if definition.template_context is not None:
+                context.update(definition.template_context(spec, self))
+
+        blocks = [
+            self._render_jinja(
+                definition.compose_fragment,
                 {
-                    "pg_mem_mb": int(max(ram_mb * 0.5, 512)),
-                    "redis_mem_mb": int(max(ram_mb * 0.25, 256)),
-                    "nginx_mem_mb": int(max(ram_mb * 0.125, 128)),
-                }
-            ),
-            "pg_cpus": round(max(hw.vcpu * 0.5, 0.5), 2),
-            "redis_cpus": round(max(hw.vcpu * 0.25, 0.25), 2),
-            "nginx_cpus": round(max(hw.vcpu * 0.25, 0.25), 2),
-            "nginx_http_port": self._nginx_http_port,
-            "nginx_https_port": self._nginx_https_port,
-        }
+                    **context,
+                    "healthcheck": definition.healthcheck(spec),
+                    "mem_mb": memory_mb[definition.name],
+                    "cpus": definition.default_resource_share.cpus(hw.vcpu),
+                    "depends_on": depends_on_for(definition, selected),
+                },
+            ).strip("\n")
+            for definition in ordered
+        ]
+
+        volumes = [
+            self._render_jinja(definition.compose_volumes, context).strip("\n")
+            for definition in ordered
+            if definition.compose_volumes
+        ]
+
+        context["service_blocks"] = "\n\n".join(blocks)
+        # Omitted entirely when nothing needs a volume — an empty
+        # `volumes:` key is not valid compose.
+        context["volumes_section"] = (
+            "\nvolumes:\n" + "\n".join(volumes) + "\n" if volumes else ""
+        )
+        return context
 
     def render_files(self, spec: StackSpec) -> dict[str, str]:
-        """Render all deployable files as {relative_path: content}."""
+        """Render all deployable files as {relative_path: content}.
+
+        Config files come from each selected service's ``render``, so a
+        service that is ``None`` in *spec* contributes no files and no
+        compose block.
+        """
+        from src.services.catalog import compose_order, for_spec
+
+        selected = for_spec(spec)
+        self._services = tuple(
+            definition.name for definition in compose_order(selected)
+        )
+
         template = Template(
             TEMPLATE_PATH.read_text(encoding="utf-8"), undefined=StrictUndefined
         )
-        return {
-            "docker-compose.yml": template.render(**self._template_context(spec)),
-            "postgresql.conf": spec.postgres.render_conf(),
-            "pg_hba.conf": spec.pg_hba.render_hba(),
-            "nginx.conf": spec.nginx.render_conf(),
-            "redis.conf": spec.redis.render_conf(),
-            "html/index.html": "<html><body>stack test harness</body></html>\n",
-        }
+        files = {"docker-compose.yml": template.render(**self._template_context(spec))}
+        for definition in selected:
+            files.update(definition.render(spec))
+        files["html/index.html"] = "<html><body>stack test harness</body></html>\n"
+        return files
 
     def write_files(self, spec: StackSpec) -> Path:
-        """Write rendered files (and TLS certs if needed) into the workdir."""
+        """Write rendered files (and any per-service extras) into the workdir."""
+        from src.services.catalog import for_spec
+
         self.workdir.mkdir(parents=True, exist_ok=True)
         for rel_path, content in self.render_files(spec).items():
             target = self.workdir / rel_path
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding="utf-8")
-        if spec.postgres.security.ssl:
-            self._generate_self_signed_certs()
+        # Anything a service needs beyond its rendered files — today only
+        # postgres's TLS certs, and only when ssl is on.
+        for definition in for_spec(spec):
+            if definition.prepare_workdir is not None:
+                definition.prepare_workdir(spec, self.workdir)
         self._log.info("workdir_written", workdir=str(self.workdir))
         return self.workdir / "docker-compose.yml"
-
-    def _generate_self_signed_certs(self) -> None:
-        """Self-signed cert for postgres SSL.
-
-        Left world-readable on the host on purpose. These are throwaway
-        two-day self-signed certs in a temp directory, and the container
-        needs to be able to read them through the bind mount before its
-        entrypoint copies them into place with the strict ownership and
-        mode PostgreSQL requires (see the compose template).
-
-        An earlier version chmod 0640 here and mounted the key directly to
-        its final path, on the assumption it would appear root-owned
-        in-container. It does not, and the server refused to start with
-        "private key file has group or world access", which surfaced only
-        as a compose dependency failure.
-        """
-        certs_dir = self.workdir / "certs"
-        certs_dir.mkdir(exist_ok=True)
-        key, crt = certs_dir / "server.key", certs_dir / "server.crt"
-        result = subprocess.run(
-            [
-                "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
-                "-keyout", str(key), "-out", str(crt),
-                "-days", "2", "-subj", "/CN=localhost",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        if result.returncode != 0:
-            raise StackStartupError(f"openssl cert generation failed: {result.stderr}")
-        key.chmod(0o644)
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -312,9 +346,9 @@ class StackRunner:
     def wait_healthy(self, timeout_s: int = 60) -> dict[str, bool]:
         """Poll container healthcheck status until all healthy or timeout."""
         deadline = time.monotonic() + timeout_s
-        health = dict.fromkeys(SERVICES, False)
+        health = dict.fromkeys(self._services, False)
         while time.monotonic() < deadline:
-            for service in SERVICES:
+            for service in self._services:
                 container = self._container(service)
                 if container is None:
                     health[service] = False
@@ -416,7 +450,7 @@ class StackRunner:
 
     def _collect_logs(self) -> dict[str, str]:
         logs = {}
-        for service in SERVICES:
+        for service in self._services:
             try:
                 logs[service] = self.get_logs(service)[-4000:]
             except Exception as exc:  # noqa: BLE001 — diagnostics only

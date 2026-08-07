@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from src.schemas.nginx import NginxConfig
 from src.schemas.postgres import PostgresConfig, PostgresHbaConfig
@@ -55,13 +55,46 @@ class StackRequirements(BaseModel):
 
 
 class StackSpec(BaseModel):
-    """Complete specification of the three-service stack."""
+    """Specification of the services selected for deployment.
+
+    Each service field is optional: ``None`` means *not selected*, and
+    the service is then not rendered, deployed, benchmarked or
+    CIS-checked (see :func:`src.services.catalog.for_spec`). Not
+    selected is not the same as not configured — a scenario whose ground
+    truth asserts a service the spec omitted still fails those
+    assertions.
+
+    The fields stay fixed rather than becoming a ``dict[str, ...]``
+    because a dynamic mapping is only needed once a second service
+    palette exists; that is the L3 decision in
+    docs/planning/extensibility-plan.md.
+    """
 
     requirements: StackRequirements
-    postgres: PostgresConfig
-    nginx: NginxConfig
-    redis: RedisConfig
-    pg_hba: PostgresHbaConfig
+    postgres: PostgresConfig | None = None
+    nginx: NginxConfig | None = None
+    redis: RedisConfig | None = None
+    #: Coupled to postgres: required with it, forbidden without it.
+    pg_hba: PostgresHbaConfig | None = None
+
+    @model_validator(mode="after")
+    def _check_selection(self) -> StackSpec:
+        """Reject specs that deploy nothing, or postgres without pg_hba.
+
+        Both were unrepresentable while the fields were required, and
+        both would fail later and less legibly — an empty compose file,
+        or a postgres container with no host-based authentication.
+        """
+        if self.postgres is None and self.nginx is None and self.redis is None:
+            raise ValueError(
+                "a StackSpec must select at least one service "
+                "(postgres, nginx, redis)"
+            )
+        if self.postgres is not None and self.pg_hba is None:
+            raise ValueError("pg_hba is required when postgres is selected")
+        if self.postgres is None and self.pg_hba is not None:
+            raise ValueError("pg_hba is meaningless without postgres")
+        return self
 
     # NOTE: render_compose() was removed — the validator harness renders
     # its own docker-compose.yml via the Jinja template at

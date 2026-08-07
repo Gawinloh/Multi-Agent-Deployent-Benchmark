@@ -8,6 +8,7 @@ outside a repository.
 from __future__ import annotations
 
 import copy
+import json
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -438,6 +439,102 @@ class TestCorrectnessSemantics:
         self, smoke_ground_truth: dict[str, Any]
     ) -> None:
         assert score_configuration_correctness(None, smoke_ground_truth) is None
+
+
+class TestUnselectedServiceScoring:
+    """A service set to None is scored, not skipped.
+
+    Since StackSpec's service fields became optional, "the agent chose
+    not to deploy redis" serialises as ``{"redis": None}`` rather than
+    as an absent key. That is a different shape from a spec that simply
+    never configured redis, and it must score the same way: every
+    assertion in an ``expected_redis`` block still counts, and still
+    fails. Skipping the block instead would silently inflate correctness
+    on all 12 Study 1 scenarios, every one of which asserts redis.
+    """
+
+    def test_null_service_fails_its_ground_truth_block(
+        self, final_spec: dict[str, Any], smoke_ground_truth: dict[str, Any]
+    ) -> None:
+        final_spec["redis"] = None
+        scored = score_configuration_correctness(final_spec, smoke_ground_truth)
+
+        assert scored is not None
+        # All three redis assertions stay in the denominator.
+        assert scored["parameters_checked"] == 9
+        for parameter in (
+            "redis.maxmemory_set",
+            "redis.maxmemory_policy_acceptable",
+            "redis.requirepass_or_acl",
+        ):
+            detail = _detail(scored, parameter)
+            assert detail["passed"] is False
+            assert detail["status"] == "missing"
+
+    def test_null_service_scores_identically_to_an_absent_key(
+        self, final_spec: dict[str, Any], smoke_ground_truth: dict[str, Any]
+    ) -> None:
+        explicit_null = copy.deepcopy(final_spec)
+        explicit_null["redis"] = None
+        key_removed = copy.deepcopy(final_spec)
+        del key_removed["redis"]
+
+        assert score_configuration_correctness(
+            explicit_null, smoke_ground_truth
+        ) == score_configuration_correctness(key_removed, smoke_ground_truth)
+
+    def test_other_services_are_unaffected(
+        self, final_spec: dict[str, Any], smoke_ground_truth: dict[str, Any]
+    ) -> None:
+        before = score_configuration_correctness(final_spec, smoke_ground_truth)
+        final_spec["redis"] = None
+        after = score_configuration_correctness(final_spec, smoke_ground_truth)
+
+        assert before is not None and after is not None
+        postgres_and_nginx = [
+            detail
+            for detail in after["parameter_details"]
+            if not detail["parameter"].startswith("redis.")
+        ]
+        assert postgres_and_nginx == [
+            detail
+            for detail in before["parameter_details"]
+            if not detail["parameter"].startswith("redis.")
+        ]
+
+    def test_smoke_pass_rate_covers_only_deployed_services(self) -> None:
+        """Unlike correctness, smoke tests are a fraction of what actually
+        ran — an unselected service contributes no smoke test at all."""
+        result = RunResult(
+            scenario_id="s", scenario_text="t", architecture="single", model="m"
+        )
+        result.termination_reason = "finalised"
+        result.validator_report = {
+            "smoke_tests": {
+                "postgres": {"did_start": True, "accepts_connections": True},
+                "nginx": {"did_start": True, "accepts_connections": True},
+            }
+        }
+        scores = compute_scores(result, None)
+        assert scores["smoke_pass_rate"] == 1.0
+
+
+class TestServicesDeployed:
+    def test_defaults_to_empty(self) -> None:
+        result = RunResult(
+            scenario_id="s", scenario_text="t", architecture="single", model="m"
+        )
+        assert result.services_deployed == []
+
+    def test_is_persisted(self, tmp_path: Path) -> None:
+        from src.experiment.result_logger import save
+
+        result = RunResult(
+            scenario_id="s", scenario_text="t", architecture="single", model="m"
+        )
+        result.services_deployed = ["postgres", "nginx"]
+        saved = json.loads(save(result, tmp_path).read_text(encoding="utf-8"))
+        assert saved["services_deployed"] == ["postgres", "nginx"]
 
     def test_final_spec_none_omits_correctness_key_from_scores(
         self, smoke_ground_truth: dict[str, Any]
