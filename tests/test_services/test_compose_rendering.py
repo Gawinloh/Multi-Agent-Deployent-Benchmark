@@ -83,6 +83,7 @@ class TestGoldenThreeServiceRender:
             ("pg_hba_conf", "pg_hba.conf"),
             ("nginx_conf", "nginx.conf"),
             ("redis_conf", "redis.conf"),
+            ("rabbitmq_conf", "rabbitmq.conf"),
         ):
             golden = (GOLDEN / "generate_config" / filename).read_text(encoding="utf-8")
             assert getattr(files, attribute) == golden, f"{filename} changed"
@@ -336,7 +337,7 @@ class TestStackSpecSelection:
 
     def test_a_spec_selecting_nothing_is_rejected(self) -> None:
         payload = json.loads(_STACKSPEC_EXAMPLE)
-        for field in ("postgres", "nginx", "redis", "pg_hba"):
+        for field in ("postgres", "nginx", "redis", "rabbitmq", "pg_hba"):
             payload.pop(field)
         with pytest.raises(ValueError, match="at least one service"):
             StackSpec.model_validate(payload)
@@ -356,6 +357,8 @@ class TestStackSpecSelection:
     def test_omitted_services_default_to_none(self) -> None:
         payload = json.loads(_STACKSPEC_EXAMPLE)
         payload.pop("redis")
+        payload.pop("rabbitmq")
         spec = StackSpec.model_validate(payload)
         assert spec.redis is None
+        assert spec.rabbitmq is None
         assert [d.name for d in catalog.for_spec(spec)] == ["postgres", "nginx"]

@@ -13,6 +13,11 @@ from typing import Any
 # Simplified requirements-only example for the agent prompt.
 # The agent passes this to generate_config in "complete" mode; the tool
 # handles the full StackSpec generation via constrained decoding.
+#
+# selected_services is deliberately NOT shown here. Any concrete list
+# would anchor the model on that particular set of services, and the
+# selection decision is exactly what Study 2 measures. The field is
+# documented in the prose above and in the constraints list below.
 _REQUIREMENTS_EXAMPLE = """\
 {
   "requirements": {
@@ -29,7 +34,15 @@ SYSTEM_PROMPT = """\
 You are an expert deployment engineer specialising in multi-service web stacks.
 
 Your task: take a natural-language request and produce a fully deployed, secure,
-performant stack of **nginx + PostgreSQL + Redis** running inside Docker.
+performant stack running inside Docker.
+
+## Service selection
+
+The catalog offers four services: **postgres**, **nginx**, **redis** and
+**rabbitmq**. Deploy only the ones the requirements justify — not every request
+needs all four. List the ones you are deploying in
+`requirements.selected_services`; any service you leave out will have its
+configuration set to null and will not be deployed.
 
 ## Tools available
 
@@ -41,7 +54,7 @@ You have four tools:
 
 2. **generate_config** — produce config files from requirements. Call with
    mode "complete" and a partial_spec containing a requirements dict. The
-   tool fills in all postgres, nginx, redis, and pg_hba fields automatically
+   tool fills in the fields of the services you selected automatically
    using authoritative defaults and constrained decoding.
    Do NOT try to build the full service config yourself.
 
@@ -62,13 +75,16 @@ Pass mode "complete" and a partial_spec with the requirements dict:
 - workload_class: must be one of "OLTP", "OLAP", "CACHING_HEAVY", "BALANCED" (use BALANCED for web workloads)
 - compliance: must be one of "NONE", "GDPR_UK", "HIPAA", "PCI_DSS"
 - hardware must have exactly: ram_gb (number), vcpu (integer), disk_gb (number)
+- selected_services: a list drawn from "postgres", "nginx", "redis", "rabbitmq"
 
 ## Strategy
 
-1. Read the request carefully. Identify workload class, scale, compliance needs.
+1. Read the request carefully. Identify workload class, scale, compliance needs,
+   and which of the catalog services the requirements justify.
 2. Use query_rag to look up authoritative tuning guidance (1-2 queries max).
 3. Call generate_config with mode "complete" and partial_spec containing only
-   the requirements dict. The tool handles all service-level configuration.
+   the requirements dict, including selected_services. The tool handles all
+   service-level configuration for the services you selected.
 4. Take the "spec" from generate_config's result and pass it to validate_config.
 5. If validation fails, call generate_config again with adjusted requirements.
 6. Iterate until satisfactory, then call finalise.

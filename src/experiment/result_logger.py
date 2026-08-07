@@ -493,14 +493,6 @@ def score_configuration_correctness(
     - A parameter the spec never set counts as a **failure**, not as an
       exclusion, so an agent cannot raise its score by omitting hard
       parameters.
-    - This includes every parameter of a service the spec did not select
-      at all. A ground-truth block is **never** skipped because its
-      service is ``None``: "we chose not to deploy redis" and "redis was
-      required and is missing" are the same outcome to this metric,
-      which asserts what the scenario needed. Scoring the *selection*
-      decision itself is a separate metric (L2 of the extensibility
-      plan) and deliberately does not live here — folding it in would
-      silently change every Study 1 number.
     - A run that never finalised (``final_spec is None``) returns ``None``
       and therefore contributes **no** ``correctness`` key at all. Absent
       and wrong are different outcomes, and scoring an unfinished run as
@@ -510,6 +502,30 @@ def score_configuration_correctness(
       ``parameter_details`` with status ``unmapped`` and excluded from the
       denominator, with a warning logged. Silently counting it either way
       would misreport the metric.
+
+    **Two scoring modes, chosen by the scenario, never by the caller.**
+
+    *Study 1 mode* — the scenario has no ``expected_services`` block.
+    There was no selection task, so a service left ``None`` is simply a
+    broken spec: its whole ``expected_*`` block is scored, and every
+    parameter in it fails. This is what the frozen 72-run dataset was
+    scored under and it must not drift.
+
+    *Study 2 mode* — the scenario carries ``expected_services``.
+    Selection is now a task in its own right, scored by
+    :func:`score_service_selection`. A service the spec did not select
+    is **excluded** from the correctness denominator rather than counted
+    as failures, so this metric answers "given what you chose, did you
+    configure it well". Penalising an omission here as well as in
+    selection would count one decision twice and destroy the ability to
+    tell the two capabilities apart, which is the whole point of Study 2.
+    Excluded blocks appear in ``parameter_details`` with status
+    ``not_selected`` so the exclusion is visible rather than silent.
+
+    Because the denominator is outcome-dependent in Study 2,
+    ``parameters_checked`` varies between runs of the same scenario and
+    correctness is **not comparable across runs on its own** — see the
+    warning on :func:`compute_scores`.
 
     Returns:
         ``{"correctness": float, "parameters_checked": int,
@@ -526,11 +542,33 @@ def score_configuration_correctness(
     passed_count = 0
     checked_count = 0
 
+    # Presence of expected_services is what makes this a Study 2 scenario.
+    # Study 1's twelve carry no such key and are therefore scored exactly
+    # as they always were.
+    selection_scored = isinstance(ground_truth.get("expected_services"), list)
+
     for block in GROUND_TRUTH_PARAMETER_MAP:
         expectations = ground_truth.get(block)
         if not isinstance(expectations, dict):
             continue
         service = block.removeprefix("expected_")
+
+        if selection_scored and final_spec.get(service) is None:
+            # Not selected. The miss (or the correct omission) is scored
+            # by score_service_selection; charging it here as well would
+            # count one decision against the agent twice.
+            details.append(
+                {
+                    "parameter": f"{service}.*",
+                    "comparison": None,
+                    "expected": sorted(expectations),
+                    "spec_path": service,
+                    "actual": None,
+                    "passed": None,
+                    "status": "not_selected",
+                }
+            )
+            continue
 
         for key, expected in expectations.items():
             param, comparison = _lookup(block, key)
@@ -600,6 +638,118 @@ def score_configuration_correctness(
         "correctness": passed_count / checked_count,
         "parameters_checked": checked_count,
         "parameter_details": details,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Service selection (primary Study 2 metric)
+# ---------------------------------------------------------------------------
+
+
+def _catalog_names() -> tuple[str, ...]:
+    """Catalog service names, imported lazily.
+
+    ``src.services.catalog`` reaches the validator harness, which imports
+    the schemas; importing it at module scope here would drag the whole
+    deployment stack into every process that only wants to read a result
+    file.
+    """
+    from src.services.catalog import names
+
+    return names()
+
+
+def score_service_selection(
+    final_spec: dict[str, Any] | None,
+    ground_truth: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Score which services the agent chose against ``expected_services``.
+
+    This is the Study 2 metric that makes decomposition testable on a
+    *judgement* task rather than a formula-substitutable one: deciding
+    that a workload needs no cache is a different capability from tuning
+    the cache once chosen.
+
+    What counts as "selected" is read from the spec itself — a service
+    is selected exactly when its ``StackSpec`` field is not ``None`` —
+    rather than from anything the agent claimed. A spec that names a
+    service in ``requirements.selected_services`` but leaves its config
+    null did not deploy it, and this metric follows the deployment.
+
+    True negatives (correctly not deploying a service the scenario does
+    not need) are reported in ``selection_detail`` but deliberately kept
+    out of precision, recall and F1, which are the standard set-based
+    definitions over the positive class.
+
+    Returns:
+        ``{"selection_exact_match": bool, "selection_precision": float,
+        "selection_recall": float, "selection_f1": float,
+        "selection_detail": list}``, or ``None`` when the scenario has no
+        ``expected_services`` block (every Study 1 scenario) or the run
+        produced no spec to assess.
+    """
+    if not ground_truth:
+        return None
+    expected_list = ground_truth.get("expected_services")
+    if not isinstance(expected_list, list):
+        return None
+    if final_spec is None:
+        logger.info("selection_not_scored", reason="final_spec_is_none")
+        return None
+
+    catalog = _catalog_names()
+    unknown = sorted(set(expected_list) - set(catalog))
+    if unknown:
+        # A scenario asserting a service the catalog cannot deploy would
+        # make recall unreachable by construction. Fail loudly here
+        # rather than quietly depress every run's score.
+        raise ValueError(
+            f"expected_services names non-catalog service(s) {unknown}; "
+            f"catalog is {sorted(catalog)}"
+        )
+
+    expected = set(expected_list)
+    selected = {name for name in catalog if final_spec.get(name) is not None}
+
+    true_positives = expected & selected
+    false_positives = selected - expected
+    false_negatives = expected - selected
+
+    precision = (
+        len(true_positives) / len(selected) if selected else float(not expected)
+    )
+    recall = (
+        len(true_positives) / len(expected) if expected else float(not selected)
+    )
+    f1 = (
+        2 * precision * recall / (precision + recall)
+        if (precision + recall) > 0
+        else 0.0
+    )
+
+    def verdict(name: str) -> str:
+        if name in true_positives:
+            return "true_positive"
+        if name in false_positives:
+            return "false_positive"
+        if name in false_negatives:
+            return "false_negative"
+        return "true_negative"
+
+    return {
+        "selection_exact_match": selected == expected,
+        "selection_precision": precision,
+        "selection_recall": recall,
+        "selection_f1": f1,
+        "selection_detail": [
+            {
+                "service": name,
+                "expected": name in expected,
+                "selected": name in selected,
+                "verdict": verdict(name),
+            }
+            for name in catalog
+        ],
     }
 
 
@@ -705,10 +855,32 @@ def compute_scores(
       scenario and so must be recorded alongside the fraction
     - ``parameter_details``: per-parameter pass/fail with expected and
       actual values
+    - ``selection_*``: which services were chosen, for Study 2 scenarios
+      only (see :func:`score_service_selection`)
 
     The three correctness keys are omitted entirely when the run produced
     no ``final_spec`` or the scenario carries no ground truth — see
     :func:`score_configuration_correctness`.
+
+    .. warning::
+
+       **Never report Study 2 ``correctness`` without
+       ``selection_f1`` (or exact match) beside it.**
+
+       For a scenario carrying ``expected_services``, correctness is
+       computed only over the services the agent actually selected, so
+       ``parameters_checked`` is outcome-dependent: an agent that
+       deploys one service and tunes it perfectly scores correctness
+       1.0 on a much smaller denominator than one that deploys all
+       four. Quoted alone, correctness rewards under-selection. The two
+       metrics are only interpretable together, and
+       ``parameters_checked`` must accompany both.
+
+       Study 1's twelve scenarios have no ``expected_services``, emit no
+       ``selection_*`` keys, and keep the fixed denominator they were
+       always scored on. That is what makes the frozen dataset
+       reproducible, and it is also why the two studies' correctness
+       figures are not directly comparable.
     """
     scores: dict[str, Any] = {"completed": result.termination_reason == "finalised"}
 
@@ -740,6 +912,10 @@ def compute_scores(
                 if s.get("did_start") and s.get("accepts_connections")
             )
             scores["smoke_pass_rate"] = passed / len(smoke)
+
+    selection = score_service_selection(result.final_spec, ground_truth)
+    if selection is not None:
+        scores.update(selection)
 
     correctness = score_configuration_correctness(result.final_spec, ground_truth)
     if correctness is not None:

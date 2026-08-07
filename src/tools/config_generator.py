@@ -138,6 +138,32 @@ _STACKSPEC_EXAMPLE = """\
       "tls_port": null
     }
   },
+  "rabbitmq": {
+    "resources": {
+      "vm_memory_high_watermark": 0.4,
+      "vm_memory_high_watermark_paging_ratio": 0.5,
+      "disk_free_limit": "2GB"
+    },
+    "networking": {
+      "listener_port": 5672,
+      "listener_ip": "0.0.0.0",
+      "max_connections": 500,
+      "heartbeat": 60
+    },
+    "security": {
+      "default_user": "appuser",
+      "default_pass": "change-me-strong-password",
+      "loopback_users": ["guest"],
+      "tls_enabled": false,
+      "tls_port": 5671,
+      "tls_verify_peer": false
+    },
+    "management": {
+      "enabled": true,
+      "port": 15672,
+      "listener_ip": "127.0.0.1"
+    }
+  },
   "pg_hba": {
     "rules": [
       {"type": "local", "database": "all", "user": "all", "address": null, "auth_method": "peer"},
@@ -170,8 +196,105 @@ _COMPLETION_SYSTEM = (
     "- save entries look like: '3600 1' (seconds changes)\n"
     "- rename_commands is a dict: {'FLUSHALL': '', 'CONFIG': 'CONFIG_xxx'}\n"
     "- keepalive_timeout is an integer (no 's' suffix)\n"
+    "- If requirements.selected_services is present, emit a config block "
+    "ONLY for the services it names and set every other service to null\n"
     "- Respond with ONLY the JSON object, no prose\n"
 )
+
+
+def _requested_services(partial_spec: dict[str, Any]) -> list[str] | None:
+    """The agent's ``selected_services``, read from its own call.
+
+    In *complete* mode the partial spec is only ever shown to the
+    completion model as text, so this is the sole place the agent's
+    stated selection is available as data. Reading it back off the
+    *completed* spec does not work: the completion model regenerates
+    ``requirements`` from scratch and routinely drops the field, which
+    silently disables enforcement — observed on qwen2.5:14b, which
+    passed ``["nginx", "redis"]`` and got a spec whose
+    ``selected_services`` was null.
+
+    Raises:
+        ValueError: if the agent named a service the catalog cannot
+            deploy. Surfaced to the agent as a failed tool call so it can
+            correct itself, rather than silently selecting nothing.
+    """
+    requirements = partial_spec.get("requirements")
+    if not isinstance(requirements, dict):
+        return None
+    requested = requirements.get("selected_services")
+    if requested is None:
+        return None
+    if not isinstance(requested, list) or not all(
+        isinstance(name, str) for name in requested
+    ):
+        raise ValueError(
+            f"selected_services must be a list of service names, got {requested!r}"
+        )
+
+    from src.services.catalog import names
+
+    catalog = names()
+    unknown = [name for name in requested if name not in catalog]
+    if unknown:
+        raise ValueError(
+            f"unknown service(s) {unknown}; catalog is {sorted(catalog)}"
+        )
+    if not requested:
+        raise ValueError("selected_services must name at least one service")
+    return list(dict.fromkeys(requested))
+
+
+def _apply_selection(
+    spec: StackSpec, requested: list[str] | None = None
+) -> StackSpec:
+    """Null out every service the requested selection omits.
+
+    Service selection is the agent's decision to make, so it is enforced
+    here in code rather than by asking the completion model to honour it.
+    Constrained decoding reliably produces a *valid* StackSpec but not
+    an *obedient* one: asked for a stack with no cache it will still tend
+    to emit a plausible redis block, because every example it has ever
+    seen has one. Left to the prompt, the selection metric would measure
+    the completion model's habits rather than the agent's judgement.
+
+    Args:
+        spec: the completed (or directly supplied) specification.
+        requested: the agent's selection, taken from the call it made.
+            ``None`` falls back to whatever the spec itself carries,
+            which is the right source in deterministic mode.
+
+    The selection is written back onto ``requirements.selected_services``
+    so the run record shows what the agent asked for, not merely what
+    survived.
+    """
+    effective = (
+        requested if requested is not None else spec.requirements.selected_services
+    )
+    if effective is None:
+        # Nothing said about selection — the Study 1 behaviour.
+        return spec
+
+    from src.services.catalog import names
+
+    dropped = [name for name in names() if name not in effective]
+    update: dict[str, Any] = dict.fromkeys(dropped)
+    if "postgres" in dropped:
+        # pg_hba is coupled to postgres and StackSpec rejects one without
+        # the other.
+        update["pg_hba"] = None
+    update["requirements"] = spec.requirements.model_copy(
+        update={"selected_services": effective}
+    )
+    logger.info(
+        "generate_config_selection_applied",
+        selected=effective,
+        dropped=dropped,
+        already_absent=[
+            name for name in dropped if getattr(spec, name, None) is None
+        ],
+    )
+    return spec.model_copy(update=update)
 
 
 def _render(spec: StackSpec) -> GeneratedFiles:
@@ -221,13 +344,19 @@ def generate_config(
             *budget* is missing.
     """
     if mode == "deterministic":
-        spec = StackSpec.model_validate(partial_spec)
+        spec = _apply_selection(
+            StackSpec.model_validate(partial_spec), _requested_services(partial_spec)
+        )
         logger.info("generate_config_deterministic")
         return _render(spec)
 
     # --- complete mode ---
     if llm_client is None or budget is None:
         raise ValueError("complete mode requires both llm_client and budget")
+
+    # Parsed before the LLM call so a hallucinated service name costs no
+    # tokens and comes back to the agent as an immediate, correctable error.
+    requested = _requested_services(partial_spec)
 
     from src.llm.client import BudgetEnforcer
 
@@ -249,5 +378,6 @@ def generate_config(
     ]
 
     spec, _usage = enforcer.chat(messages, schema=StackSpec)
+    spec = _apply_selection(spec, requested)  # type: ignore[arg-type]
     logger.info("generate_config_complete", tokens_remaining=budget.remaining())
     return _render(spec)  # type: ignore[arg-type]

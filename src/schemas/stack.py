@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from src.schemas.nginx import NginxConfig
 from src.schemas.postgres import PostgresConfig, PostgresHbaConfig
@@ -53,6 +53,39 @@ class StackRequirements(BaseModel):
     hardware: HardwareConstraints
     compliance: ComplianceProfile
     backup_required: bool
+    #: Which catalog services to deploy. ``None`` means "not stated",
+    #: which is how every Study 1 run behaved and leaves service
+    #: selection to the config generator's defaults. A list is binding:
+    #: :func:`src.tools.config_generator.generate_config` nulls out every
+    #: service not named, so the agent's decision is enforced in code
+    #: rather than left to a second model's discretion.
+    selected_services: list[str] | None = None
+
+    @field_validator("selected_services")
+    @classmethod
+    def _check_catalog_members(cls, value: list[str] | None) -> list[str] | None:
+        """Reject service names the catalog cannot deploy.
+
+        A hallucinated name ("mysql", "kafka") fails validation here
+        instead of silently selecting nothing, which would otherwise look
+        like a deliberate omission in the selection metric.
+
+        The import is deferred because ``src.services.catalog`` reaches
+        the docker harness, which imports this module.
+        """
+        if value is None:
+            return value
+        from src.services.catalog import names
+
+        catalog = names()
+        unknown = [name for name in value if name not in catalog]
+        if unknown:
+            raise ValueError(
+                f"unknown service(s) {unknown}; catalog is {sorted(catalog)}"
+            )
+        if not value:
+            raise ValueError("selected_services must name at least one service")
+        return list(dict.fromkeys(value))  # de-duplicate, keep order
 
 
 class StackSpec(BaseModel):

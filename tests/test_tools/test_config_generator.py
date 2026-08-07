@@ -213,3 +213,113 @@ class TestCompleteMode:
         summary = budget.summary()
         assert summary["total_used"] == 300
         assert summary["calls"] == 1
+
+
+class TestServiceSelectionEnforcement:
+    """Selection is honoured in code, not by trusting the completion model.
+
+    The completion model regenerates ``requirements`` from scratch and was
+    observed dropping ``selected_services`` entirely (qwen2.5:14b, Study 2
+    smoke run), so enforcement reads the agent's own call.
+    """
+
+    def _example(self, **requirements: object) -> dict:
+        import json
+
+        from src.tools.config_generator import _STACKSPEC_EXAMPLE
+
+        payload = json.loads(_STACKSPEC_EXAMPLE)
+        payload["requirements"].update(requirements)
+        return payload
+
+    def test_unselected_services_are_nulled(self) -> None:
+        files = generate_config(
+            self._example(selected_services=["postgres", "nginx"]),
+            mode="deterministic",
+        )
+        assert files.spec.redis is None
+        assert files.spec.rabbitmq is None
+        assert files.redis_conf is None
+        assert files.rabbitmq_conf is None
+        assert files.postgresql_conf is not None
+
+    def test_pg_hba_follows_postgres_out(self) -> None:
+        files = generate_config(
+            self._example(selected_services=["nginx"]), mode="deterministic"
+        )
+        assert files.spec.postgres is None
+        assert files.spec.pg_hba is None
+        assert files.pg_hba_conf is None
+
+    def test_selection_is_recorded_on_the_spec(self) -> None:
+        """The run record must show what the agent asked for, so selection
+        can be audited without re-deriving it from the config blocks."""
+        files = generate_config(
+            self._example(selected_services=["nginx", "redis"]),
+            mode="deterministic",
+        )
+        assert files.spec.requirements.selected_services == ["nginx", "redis"]
+
+    def test_absent_selection_leaves_everything_deployed(self) -> None:
+        """Study 1 behaviour: saying nothing about selection changes nothing."""
+        files = generate_config(self._example(), mode="deterministic")
+        assert files.spec.requirements.selected_services is None
+        for name in ("postgres", "nginx", "redis", "rabbitmq"):
+            assert getattr(files.spec, name) is not None
+
+    def test_duplicates_are_collapsed(self) -> None:
+        files = generate_config(
+            self._example(selected_services=["nginx", "nginx"]),
+            mode="deterministic",
+        )
+        assert files.spec.requirements.selected_services == ["nginx"]
+
+    def test_hallucinated_service_is_rejected(self) -> None:
+        with pytest.raises(Exception, match="kafka"):
+            generate_config(
+                self._example(selected_services=["nginx", "kafka"]),
+                mode="deterministic",
+            )
+
+    def test_empty_selection_is_rejected(self) -> None:
+        with pytest.raises(Exception, match="at least one service"):
+            generate_config(
+                self._example(selected_services=[]), mode="deterministic"
+            )
+
+    def test_completion_mode_uses_the_agents_call_not_the_model_output(
+        self, monkeypatch
+    ) -> None:
+        """The regression this whole mechanism exists for: the model drops
+        selected_services and emits all four services anyway."""
+        import json
+
+        from src.schemas.stack import StackSpec
+        from src.tools.config_generator import _STACKSPEC_EXAMPLE
+
+        full = json.loads(_STACKSPEC_EXAMPLE)  # all four, no selected_services
+        completed = StackSpec.model_validate(full)
+
+        class FakeEnforcer:
+            def __init__(self, *args, **kwargs) -> None: ...
+
+            def chat(self, messages, schema):
+                return completed, None
+
+        monkeypatch.setattr("src.llm.client.BudgetEnforcer", FakeEnforcer)
+
+        class FakeBudget:
+            def remaining(self) -> int:
+                return 1000
+
+        files = generate_config(
+            {"requirements": {**full["requirements"], "selected_services": ["nginx"]}},
+            mode="complete",
+            llm_client=object(),
+            budget=FakeBudget(),
+        )
+        assert files.spec.requirements.selected_services == ["nginx"]
+        assert files.spec.postgres is None
+        assert files.spec.redis is None
+        assert files.spec.rabbitmq is None
+        assert files.spec.nginx is not None

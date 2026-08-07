@@ -41,3 +41,11 @@ produced. One file has been regenerated:
   The four `.conf` files it sits beside, and all three `docker-compose.yml`
   variants, were unchanged by that work — which is the property the
   three-service stack actually has to preserve.
+
+- **`generate_config/spec.json` again, plus a new
+  `generate_config/rabbitmq.conf`**, at L2. The input to this fixture is
+  `_STACKSPEC_EXAMPLE`, which is prompt content: it gained a rabbitmq
+  block so the completion model knows the shape of a queue config, and
+  `requirements` gained `selected_services`. Both show up in the dump.
+  The `nossl/`, `ssl/` and `nopass/` trees — the ones that represent what
+  Docker actually runs for the Study 1 stack — were untouched again.
