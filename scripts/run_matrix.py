@@ -35,14 +35,15 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCENARIO_DIR = REPO_ROOT / "benchmark" / "scenarios"
 DEFAULT_OUTPUT = REPO_ROOT / "results" / "runs"
-PROGRESS_LOG = REPO_ROOT / "results" / "matrix_progress.jsonl"
 
 ARCHITECTURES = ("single", "multi")
 
 
-def discover_scenarios(names: list[str] | None) -> list[Path]:
+def discover_scenarios(
+    names: list[str] | None, scenario_dir: Path = SCENARIO_DIR
+) -> list[Path]:
     """Return scenario YAML paths, optionally filtered by file stem."""
-    paths = sorted(SCENARIO_DIR.glob("*.yaml"))
+    paths = sorted(scenario_dir.glob("*.yaml"))
     if names:
         wanted = set(names)
         paths = [p for p in paths if p.stem in wanted]
@@ -50,7 +51,7 @@ def discover_scenarios(names: list[str] | None) -> list[Path]:
         if missing:
             raise SystemExit(f"Unknown scenario(s): {', '.join(sorted(missing))}")
     if not paths:
-        raise SystemExit(f"No scenario YAML found in {SCENARIO_DIR}")
+        raise SystemExit(f"No scenario YAML found in {scenario_dir}")
     return paths
 
 
@@ -85,9 +86,10 @@ def existing_run_count(output: Path, sid: str, architecture: str) -> int:
     return usable
 
 
-def log_progress(record: dict[str, object]) -> None:
-    PROGRESS_LOG.parent.mkdir(parents=True, exist_ok=True)
-    with PROGRESS_LOG.open("a", encoding="utf-8") as handle:
+def log_progress(record: dict[str, object], progress_log: Path) -> None:
+    """Append progress alongside the selected result output, never Study 1."""
+    progress_log.parent.mkdir(parents=True, exist_ok=True)
+    with progress_log.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record) + "\n")
 
 
@@ -143,6 +145,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--runs", type=int, default=1, help="Runs per cell (default: 1)")
     parser.add_argument("--scenarios", nargs="*", help="Scenario file stems to include")
     parser.add_argument(
+        "--scenarios-dir",
+        type=Path,
+        default=SCENARIO_DIR,
+        help="Directory containing scenario YAML files (default: benchmark/scenarios)",
+    )
+    parser.add_argument(
         "--architectures", nargs="*", default=list(ARCHITECTURES), choices=ARCHITECTURES
     )
     parser.add_argument("--model", default=None)
@@ -163,7 +171,10 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
-    paths = discover_scenarios(args.scenarios)
+    args.scenarios_dir = args.scenarios_dir.resolve()
+    args.output = args.output.resolve()
+    progress_log = args.output / "matrix_progress.jsonl"
+    paths = discover_scenarios(args.scenarios, args.scenarios_dir)
     cells = [(p, a) for p in paths for a in args.architectures]
 
     plan: list[tuple[Path, str, int]] = []
@@ -213,7 +224,8 @@ def main(argv: list[str] | None = None) -> None:
                 "ok": ok,
                 "elapsed_s": round(elapsed, 1),
                 "note": note,
-            }
+            },
+            progress_log,
         )
 
         remaining = total_runs - done
@@ -231,7 +243,7 @@ def main(argv: list[str] | None = None) -> None:
         print("\nRe-run with --resume to fill the gaps.")
     else:
         print("All cells succeeded.")
-    print(f"Progress log: {PROGRESS_LOG}")
+    print(f"Progress log: {progress_log}")
 
 
 if __name__ == "__main__":

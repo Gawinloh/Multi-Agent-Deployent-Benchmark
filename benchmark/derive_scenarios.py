@@ -435,23 +435,23 @@ REDIS_POLICIES: dict[str, list[str]] = {
 
 #: Minimum CIS Level 1 pass rate expected per compliance profile.
 #:
-#: Compared against ``cis_pass_rate_actionable`` — the 26 of 32 controls a
-#: specification can actually satisfy — not against the raw rate. Six
-#: controls are unreachable through the agent-facing schema (see
-#: ``src.validator.cis_checks.UNREACHABLE_CONTROLS``), which capped the raw
-#: rate at 26/32 = 0.813 and so put the GDPR and HIPAA/PCI floors below the
-#: achievable maximum by construction: every compliance scenario failed its
-#: floor no matter how the agent behaved.
+#: Compared against ``cis_pass_rate_actionable``, not against the raw rate.
+#: The Study 1 three-service palette has 26 actionable controls out of 32;
+#: Study 2's selectable palettes range from 6 (nginx only) to 38 (all four
+#: services). Controls unreachable through the agent-facing schema are listed
+#: in ``src.validator.cis_checks.UNREACHABLE_CONTROLS`` and excluded from this
+#: denominator.
 #:
 #: This is the same fault as the withdrawn vCPU-scaled ``max_connections``
 #: rule — a threshold that no run could meet measures the rule, not the
 #: agent — and is corrected the same way, by fixing the rule rather than
 #: reinterpreting the results.
 #:
-#: The values themselves are unchanged; only the denominator they are
-#: compared against has been corrected. Against 26 actionable controls the
-#: pilot's typical 24 passes give 0.923, so all three floors now sit below
-#: the observed level and can discriminate in either direction.
+#: The values themselves are unchanged; only the denominator was corrected.
+#: Before Study 2 collection, a maximally hardened schema-valid deployment
+#: passed every actionable control in each selectable palette (6/6, 18/18,
+#: 24/24, 26/26, 30/30, and 38/38). The strictest 0.90 floor therefore retains
+#: a 0.10 margin below the measured ceiling for every scenario palette.
 CIS_MINIMUM: dict[str, float] = {
     "NONE": 0.75,
     "GDPR_UK": 0.85,
