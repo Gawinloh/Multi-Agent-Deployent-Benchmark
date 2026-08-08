@@ -1,0 +1,425 @@
+{
+  "scenario_id": "s2_005_inferred_cache",
+  "scenario_text": "It's a price comparison page. The same twenty or so listings get requested\nthousands of times an hour \u2014 everyone lands on the same handful \u2014 and the\nprices behind them only get refreshed from suppliers three or four times a\nday. Between refreshes the answer to every request is identical. Around 300 \npeople on the site at once, roughly 5 GB of listing and price data. The box\nis 6 GB RAM, 4 vCPU. Nothing regulated.\n",
+  "architecture": "multi",
+  "model": "gpt-4.1-nano-2025-04-14",
+  "git_commit": "98dca8bdcaad1ca91d0d36a549391f101324bbac",
+  "git_dirty": true,
+  "run_id": "e9492c0e1dea",
+  "started_at": "2026-08-08T01:47:40.203545+00:00",
+  "finished_at": "2026-08-08T01:48:30.563564+00:00",
+  "tokens_used": 50633,
+  "per_agent_tokens": {
+    "config": 35552,
+    "validation": 713,
+    "security": 7720,
+    "orchestrator": 6648
+  },
+  "wall_clock_s": 49.55874491692521,
+  "max_iterations": 25,
+  "termination_reason": "finalised",
+  "services_deployed": [
+    "redis"
+  ],
+  "final_spec": {
+    "requirements": {
+      "workload_class": "BALANCED",
+      "expected_concurrent_users": 10,
+      "expected_data_size_gb": 5.0,
+      "hardware": {
+        "ram_gb": 8.0,
+        "vcpu": 4,
+        "disk_gb": 100.0
+      },
+      "compliance": "NONE",
+      "backup_required": false,
+      "selected_services": [
+        "nginx",
+        "postgres",
+        "redis"
+      ]
+    },
+    "postgres": null,
+    "nginx": null,
+    "redis": {
+      "memory": {
+        "maxmemory": "512MB",
+        "maxmemory_policy": "allkeys-lru",
+        "maxmemory_samples": 5
+      },
+      "persistence": {
+        "save": [
+          "3600 1",
+          "300 100"
+        ],
+        "appendonly": true,
+        "appendfsync": "everysec"
+      },
+      "security": {
+        "protected_mode": true,
+        "requirepass": "change-me-strong-password",
+        "rename_commands": {
+          "FLUSHALL": "",
+          "CONFIG": "CONFIG_a1b2c3"
+        }
+      },
+      "networking": {
+        "bind": [
+          "127.0.0.1"
+        ],
+        "port": 6379,
+        "tls_port": null
+      }
+    },
+    "rabbitmq": null,
+    "pg_hba": null
+  },
+  "validator_report": {
+    "timestamp": "2026-08-08T01:48:19.008005Z",
+    "smoke_tests": {
+      "redis": {
+        "did_start": true,
+        "accepts_connections": true,
+        "error_message": null
+      }
+    },
+    "benchmarks": {
+      "redis": {
+        "throughput": 168552.565,
+        "latency_p50": 0.027,
+        "latency_p90": null,
+        "latency_p99": null,
+        "error_message": null
+      }
+    },
+    "cis_results": [
+      {
+        "control_id": "1.1",
+        "name": "protected-mode on",
+        "level": 1,
+        "passed": true,
+        "evidence": "protected-mode yes",
+        "service": "redis"
+      },
+      {
+        "control_id": "1.2",
+        "name": "not bound to 0.0.0.0",
+        "level": 1,
+        "passed": true,
+        "evidence": "bind 127.0.0.1",
+        "service": "redis"
+      },
+      {
+        "control_id": "2.1",
+        "name": "requirepass or ACLs configured",
+        "level": 1,
+        "passed": true,
+        "evidence": "requirepass set",
+        "service": "redis"
+      },
+      {
+        "control_id": "2.2",
+        "name": "authentication enforced at runtime",
+        "level": 1,
+        "passed": true,
+        "evidence": "unauthenticated ping -> NOAUTH Authentication required.",
+        "service": "redis"
+      },
+      {
+        "control_id": "3.1",
+        "name": "dangerous commands renamed or disabled",
+        "level": 1,
+        "passed": false,
+        "evidence": "not renamed: FLUSHDB, EVAL, DEBUG, SHUTDOWN",
+        "service": "redis"
+      },
+      {
+        "control_id": "4.1",
+        "name": "durability configured (AOF or RDB)",
+        "level": 1,
+        "passed": true,
+        "evidence": "appendonly yes; save present",
+        "service": "redis"
+      },
+      {
+        "control_id": "4.2",
+        "name": "maxmemory set (non-zero)",
+        "level": 1,
+        "passed": true,
+        "evidence": "maxmemory 512MB",
+        "service": "redis"
+      },
+      {
+        "control_id": "4.3",
+        "name": "maxmemory-policy not noeviction",
+        "level": 1,
+        "passed": true,
+        "evidence": "maxmemory-policy allkeys-lru",
+        "service": "redis"
+      }
+    ],
+    "healthchecks": {
+      "redis": {
+        "healthcheck_present": true,
+        "healthcheck_condition": null
+      }
+    },
+    "error": null
+  },
+  "history": [
+    {
+      "worker": "config",
+      "task": "Generate a Docker deployment configuration for nginx, PostgreSQL, and Redis stacks tailored for a high-read, static data workload. Include caching strategies, resource allocations, and tuning parameters suitable for serving a 5 GB dataset with minimal latency. The system should support high availability, and use Redis as a cache layer to serve infrequent updates efficiently.",
+      "success": true,
+      "summary": "Retrieved guidance for \"What are best practices for configuring nginx, PostgreSQL, and Redis for high-re\": [Resource allocation heuristics for single-host stacks (authored)] # Resource Allocation Guide for Single-Host Stacks This guide provides sizing heuristics for a single machine running nginx, PostgreSQL, and Redis under Docker Compose. Allocations are expressed as percentages of total host RAM and CPU core | [pgtune heuristics (community rules)] # PGTune Heuristics PGTune is a community tool that generates PostgreSQL configuration recommendations based on hardware specifications and workload type. The following heuristics represent widely adopted tuning rules derived from pgtune (p Generated a StackSpec configuration.",
+      "tokens_used": 35552,
+      "iterations_used": 2,
+      "artifacts": {
+        "last_spec": "<spec>"
+      }
+    },
+    {
+      "worker": "validation",
+      "task": "Deploy the generated nginx, PostgreSQL, and Redis configuration in a Docker environment. Run smoke tests to verify basic functionality and performance. Perform CIS benchmarks for security compliance. Report any issues encountered.\n\nThe StackSpec to validate has been provided via context (auto-injected).",
+      "success": true,
+      "summary": "Validation: 1/1 smoke tests passed, 7/8 CIS checks passed.",
+      "tokens_used": 713,
+      "iterations_used": 1,
+      "artifacts": {
+        "validator_report": {
+          "timestamp": "2026-08-08T01:48:19.008005Z",
+          "smoke_tests": {
+            "redis": {
+              "did_start": true,
+              "accepts_connections": true,
+              "error_message": null
+            }
+          },
+          "benchmarks": {
+            "redis": {
+              "throughput": 168552.565,
+              "latency_p50": 0.027,
+              "latency_p90": null,
+              "latency_p99": null,
+              "error_message": null
+            }
+          },
+          "cis_results": [
+            {
+              "control_id": "1.1",
+              "name": "protected-mode on",
+              "level": 1,
+              "passed": true,
+              "evidence": "protected-mode yes",
+              "service": "redis"
+            },
+            {
+              "control_id": "1.2",
+              "name": "not bound to 0.0.0.0",
+              "level": 1,
+              "passed": true,
+              "evidence": "bind 127.0.0.1",
+              "service": "redis"
+            },
+            {
+              "control_id": "2.1",
+              "name": "requirepass or ACLs configured",
+              "level": 1,
+              "passed": true,
+              "evidence": "requirepass set",
+              "service": "redis"
+            },
+            {
+              "control_id": "2.2",
+              "name": "authentication enforced at runtime",
+              "level": 1,
+              "passed": true,
+              "evidence": "unauthenticated ping -> NOAUTH Authentication required.",
+              "service": "redis"
+            },
+            {
+              "control_id": "3.1",
+              "name": "dangerous commands renamed or disabled",
+              "level": 1,
+              "passed": false,
+              "evidence": "not renamed: FLUSHDB, EVAL, DEBUG, SHUTDOWN",
+              "service": "redis"
+            },
+            {
+              "control_id": "4.1",
+              "name": "durability configured (AOF or RDB)",
+              "level": 1,
+              "passed": true,
+              "evidence": "appendonly yes; save present",
+              "service": "redis"
+            },
+            {
+              "control_id": "4.2",
+              "name": "maxmemory set (non-zero)",
+              "level": 1,
+              "passed": true,
+              "evidence": "maxmemory 512MB",
+              "service": "redis"
+            },
+            {
+              "control_id": "4.3",
+              "name": "maxmemory-policy not noeviction",
+              "level": 1,
+              "passed": true,
+              "evidence": "maxmemory-policy allkeys-lru",
+              "service": "redis"
+            }
+          ],
+          "healthchecks": {
+            "redis": {
+              "healthcheck_present": true,
+              "healthcheck_condition": null
+            }
+          },
+          "error": null
+        }
+      }
+    },
+    {
+      "worker": "security",
+      "task": "Review the current Docker deployment configuration for nginx, PostgreSQL, and Redis. Identify and implement security hardening measures to address the failed CIS compliance check (control ID 1.1 and any other relevant findings). Once modifications are made, generate an updated configuration for redeployment.\n\nCIS failures to address: ?: ",
+      "success": true,
+      "summary": "Retrieved guidance for \"What are the CIS benchmark recommended security configurations for Docker, nginx\": [Resource allocation heuristics for single-host stacks (authored)] # Resource Allocation Guide for Single-Host Stacks This guide provides sizing heuristics for a single machine running nginx, PostgreSQL, and Redis under Docker Compose. Allocations are expressed as percentages of total host RAM and CPU core | [CIS Redis Benchmark v1.0 (paraphrased extracts)] # CIS Redis \u2014 Level 1 Controls (Implemented) The following controls are paraphrased summaries of CIS Benchmark recommendations relevant to the project's Redis validator. Only controls that the validator checks are included. ## Network and A Retrieved guidance for \"What are the CIS benchmark recommended security configurations for Docker, nginx\": [Resource allocation heuristics for single-host stacks (authored)] # Resource Allocation Guide for Single-Host Stacks This guide provides sizing heuristics for a single machine running nginx, PostgreSQL, and Redis under Docker Compose. Allocations are expressed as percentages of total host RAM and CPU core | [CIS Redis Benchmark v1.0 (paraphrased extracts)] # CIS Redis \u2014 Level 1 Controls (Implemented) The following controls are paraphrased summaries of CIS Benchmark recommendations relevant to the project's Redis validator. Only controls that the validator checks are included. ## Network and A",
+      "tokens_used": 2117,
+      "iterations_used": 2,
+      "artifacts": {}
+    },
+    {
+      "worker": "security",
+      "task": "Review and implement security hardening measures to address the failed CIS controls (such as control 1.1) in the Docker deployment configuration for nginx, PostgreSQL, and Redis. Adjust the configuration to improve container security, including setting appropriate container security options, user privileges, and network restrictions. Provide updated configuration recommendations for redeployment.\n\nCIS failures to address: ?: ",
+      "success": true,
+      "summary": "Retrieved guidance for \"CIS Docker benchmarks for nginx, PostgreSQL, and Redis container security harden\": [Resource allocation heuristics for single-host stacks (authored)] # Resource Allocation Guide for Single-Host Stacks This guide provides sizing heuristics for a single machine running nginx, PostgreSQL, and Redis under Docker Compose. Allocations are expressed as percentages of total host RAM and CPU core | [Resource allocation heuristics for single-host stacks (authored)] pooling (PgBouncer) dramatically increases the safe work_mem ceiling. ### Redis maxmemory Must Be Hard-Capped Always set maxmemory explicitly in Redis configuration. Without it, Redis grows unbounded and will be killed by the Linux OOM kill Retrieved guidance for \"CIS Docker benchmarks for nginx, PostgreSQL, and Redis container security harden\": [Resource allocation heuristics for single-host stacks (authored)] # Resource Allocation Guide for Single-Host Stacks This guide provides sizing heuristics for a single machine running nginx, PostgreSQL, and Redis under Docker Compose. Allocations are expressed as percentages of total host RAM and CPU core | [Resource allocation heuristics for single-host stacks (authored)] pooling (PgBouncer) dramatically increases the safe work_mem ceiling. ### Redis maxmemory Must Be Hard-Capped Always set maxmemory explicitly in Redis configuration. Without it, Redis grows unbounded and will be killed by the Linux OOM kill",
+      "tokens_used": 5603,
+      "iterations_used": 2,
+      "artifacts": {}
+    }
+  ],
+  "scores": {
+    "completed": true,
+    "cis_pass_rate": 0.875,
+    "cis_pass_rate_actionable": 0.875,
+    "cis_controls_actionable": 8,
+    "cis_controls_total": 8,
+    "smoke_pass_rate": 1.0,
+    "selection_exact_match": false,
+    "selection_precision": 1.0,
+    "selection_recall": 0.3333333333333333,
+    "selection_f1": 0.5,
+    "selection_detail": [
+      {
+        "service": "postgres",
+        "expected": true,
+        "selected": false,
+        "verdict": "false_negative"
+      },
+      {
+        "service": "nginx",
+        "expected": true,
+        "selected": false,
+        "verdict": "false_negative"
+      },
+      {
+        "service": "redis",
+        "expected": true,
+        "selected": true,
+        "verdict": "true_positive"
+      },
+      {
+        "service": "rabbitmq",
+        "expected": false,
+        "selected": false,
+        "verdict": "true_negative"
+      }
+    ],
+    "correctness": 0.8,
+    "parameters_checked": 5,
+    "parameter_details": [
+      {
+        "parameter": "postgres.*",
+        "comparison": null,
+        "expected": [
+          "effective_cache_size_range",
+          "maintenance_work_mem_range",
+          "max_connections_range",
+          "password_encryption",
+          "shared_buffers_range",
+          "ssl"
+        ],
+        "spec_path": "postgres",
+        "actual": null,
+        "passed": null,
+        "status": "not_selected"
+      },
+      {
+        "parameter": "nginx.*",
+        "comparison": null,
+        "expected": [
+          "server_tokens",
+          "ssl_protocols_min"
+        ],
+        "spec_path": "nginx",
+        "actual": null,
+        "passed": null,
+        "status": "not_selected"
+      },
+      {
+        "parameter": "redis.maxmemory_set",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "redis.memory.maxmemory",
+        "actual_raw": "512MB",
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.maxmemory_range",
+        "comparison": "range",
+        "expected": [
+          "922MB",
+          "2.4GB"
+        ],
+        "spec_path": "redis.memory.maxmemory",
+        "actual": "512MB",
+        "passed": false,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.maxmemory_policy_acceptable",
+        "comparison": "membership",
+        "expected": [
+          "allkeys-lru",
+          "allkeys-lfu"
+        ],
+        "spec_path": "redis.memory.maxmemory_policy",
+        "actual": "allkeys-lru",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.requirepass_or_acl",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "redis.security.requirepass",
+        "actual_raw": "change-me-strong-password",
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.protected_mode",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "redis.security.protected_mode",
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      }
+    ]
+  }
+}
