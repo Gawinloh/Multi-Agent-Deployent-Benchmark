@@ -65,6 +65,41 @@ writes only to ``results/runs_study3``. ``--resume`` is not used:
 regardless of model or budget, so a physically separate output directory
 is the safeguard against cross-dataset contamination.
 
+N=10 EXTENSION — pre-commitment, recorded before the additional runs
+--------------------------------------------------------------------
+Committed before launching the extension from N=3 to N=10 per cell.
+
+Motivation is precision, not a new question. Within-cell coefficient of
+variation at N=3 was median 0.44, max 0.88, so cell means were poorly
+estimated and the standard error of every paired-by-scenario test was
+inflated. Study 3's token ratio (1.54x, paired CI [0.93, 2.81],
+t(7)=2.05) lost significance relative to Study 2 while the point estimate
+stayed in the same region.
+
+Terms, fixed in advance:
+
+- **N is FIXED at 10 per cell.** Collection runs to completion regardless
+  of interim results. No optional stopping.
+- **No new hypotheses.** The predictions registered above at 69066b6
+  stand unchanged. P2 already failed and stays reported as failed. The
+  extension re-estimates the same quantities with more data; it does not
+  introduce a new test.
+- **This extends Study 3.** It does not supersede Study 2 or Study 1,
+  both of which remain reported exactly as collected. Tag
+  ``dataset-study3-n3`` continues to point at the 48-run state so the
+  N=3 result stays citable; ``dataset-study3-n10`` marks the 160-run
+  state.
+
+The first 48 runs are retained and pooled, not discarded: they were
+collected under identical source (98dca8b), model
+(gpt-4.1-nano-2025-04-14), budget (300,000) and max_iterations (25).
+``--resume`` tops each cell up from 3 to 10.
+
+Note on provenance: ``RunResult`` does not persist the token budget, so
+the 300,000 cap is verifiable only from the batch log
+(``budget=300000`` on all 16 cell launches) and from the absence of any
+run above the cap. Recorded here as a known gap.
+
 Usage::
 
     python scripts/analyse_study3.py
