@@ -258,12 +258,18 @@ def macro(rs: list[dict], arm: str, finalised_only: bool = False) -> dict:
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     rs3, rs2 = load(RUNS3), load(RUNS2)
-    assert len(rs3) == 48, f"expected 48 Study 3 runs, found {len(rs3)}"
+    # N-agnostic: the N=10 extension tops every cell up from 3 to 10, so
+    # the only invariant worth asserting is that the design stays balanced.
+    # Nothing else in this script depends on the cell size.
+    cell_sizes = set(Counter((r["scenario_id"], r["architecture"]) for r in rs3).values())
+    assert len(cell_sizes) == 1, f"unbalanced cells: {cell_sizes}"
+    n_per_cell = cell_sizes.pop()
+    assert len(rs3) == 16 * n_per_cell, f"expected {16 * n_per_cell} runs, found {len(rs3)}"
     assert {r["model"] for r in rs3} == {"gpt-4.1-nano-2025-04-14"}
-    assert set(Counter((r["scenario_id"], r["architecture"]) for r in rs3).values()) == {3}
 
     summary: dict = {
-        "n": 48,
+        "n": len(rs3),
+        "n_per_cell": n_per_cell,
         "cap_study2": CAP_STUDY2,
         "cap_study3": CAP_STUDY3,
         "commits": sorted({(r.get("git_commit") or "?")[:7] for r in rs3}),
@@ -311,8 +317,10 @@ def main() -> None:
         f3 = sum(r["termination_reason"] == "finalised" for r in rs3 if r["architecture"] == arm)
         f2 = sum(r["termination_reason"] == "finalised" for r in rs2 if r["architecture"] == arm)
         comp[arm] = dict(
-            study3=f"{f3}/24", study2=f"{f2}/24",
-            fisher_p=float(fisher_exact([[f3, 24 - f3], [f2, 24 - f2]]).pvalue),
+            # Study 2 is fixed at N=3 (24 runs per arm) and is not re-collected.
+            study3=f"{f3}/{8 * n_per_cell}",
+            study2=f"{f2}/24",
+            fisher_p=float(fisher_exact([[f3, 8 * n_per_cell - f3], [f2, 24 - f2]]).pvalue),
         )
     def n_final(arm: str) -> int:
         return sum(
@@ -323,7 +331,10 @@ def main() -> None:
 
     s3_single, s3_multi = n_final("single"), n_final("multi")
     comp["study3_between_arms_fisher_p"] = float(
-        fisher_exact([[s3_single, 24 - s3_single], [s3_multi, 24 - s3_multi]]).pvalue
+        fisher_exact([
+            [s3_single, 8 * n_per_cell - s3_single],
+            [s3_multi, 8 * n_per_cell - s3_multi],
+        ]).pvalue
     )
     summary["completion"] = comp
     summary["termination_reasons"] = {
@@ -411,8 +422,8 @@ def main() -> None:
 
     # -- 5. verdict table ----------------------------------------------------
     cens3 = summary["censoring_study3"]
-    p1_obs = f"multi {s3_multi}/24 finalised"
-    p1_held = s3_multi == 24
+    p1_obs = f"multi {s3_multi}/{8 * n_per_cell} finalised"
+    p1_held = s3_multi == 8 * n_per_cell
     p2_held = ratio3 > ratio2
     d_f1 = [p for p in summary["paired_study3"] if p["metric"] == "selection_f1"][0]
     p3_held = d_f1["ci_low"] <= 0 <= d_f1["ci_high"]
@@ -427,7 +438,10 @@ def main() -> None:
                       f"[{d_f1['ci_low']:+.4f},{d_f1['ci_high']:+.4f}] t={d_f1['t']:.2f}",
              held="HELD" if p3_held else "FAILED — STOP AND REPORT"),
         dict(prediction="P4", statement="Falsifier: multi still exhausts the raised budget",
-             observed=f"{cens3['multi']['budget_exhausted']}/24 multi budget_exhausted at 300k",
+             observed=(
+                 f"{cens3['multi']['budget_exhausted']}/{8 * n_per_cell} "
+                 "multi budget_exhausted at 300k"
+             ),
              held="TRIGGERED — architectural finding" if p4_triggered else "not triggered"),
     ]
     summary["verdicts"] = verdict
