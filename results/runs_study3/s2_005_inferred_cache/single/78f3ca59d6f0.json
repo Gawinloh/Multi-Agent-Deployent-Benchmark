@@ -1,0 +1,915 @@
+{
+  "scenario_id": "s2_005_inferred_cache",
+  "scenario_text": "It's a price comparison page. The same twenty or so listings get requested\nthousands of times an hour \u2014 everyone lands on the same handful \u2014 and the\nprices behind them only get refreshed from suppliers three or four times a\nday. Between refreshes the answer to every request is identical. Around 300 \npeople on the site at once, roughly 5 GB of listing and price data. The box\nis 6 GB RAM, 4 vCPU. Nothing regulated.\n",
+  "architecture": "single",
+  "model": "gpt-4.1-nano-2025-04-14",
+  "git_commit": "8518512e158adccb5c034e869db04c0035afc1e2",
+  "git_dirty": true,
+  "run_id": "78f3ca59d6f0",
+  "started_at": "2026-08-08T22:06:51.848567+00:00",
+  "finished_at": "2026-08-08T22:07:31.413516+00:00",
+  "tokens_used": 38816,
+  "per_agent_tokens": null,
+  "wall_clock_s": 39.49438816693146,
+  "max_iterations": 25,
+  "termination_reason": "finalised",
+  "services_deployed": [
+    "nginx",
+    "redis"
+  ],
+  "final_spec": {
+    "requirements": {
+      "workload_class": "BALANCED",
+      "expected_concurrent_users": 300,
+      "expected_data_size_gb": 5.0,
+      "hardware": {
+        "ram_gb": 6.0,
+        "vcpu": 4,
+        "disk_gb": 50.0
+      },
+      "compliance": "NONE",
+      "backup_required": false,
+      "selected_services": null
+    },
+    "postgres": null,
+    "nginx": {
+      "worker": {
+        "worker_processes": "auto",
+        "worker_connections": 1024
+      },
+      "http": {
+        "sendfile": true,
+        "tcp_nopush": true,
+        "tcp_nodelay": true,
+        "keepalive_timeout": 65,
+        "keepalive_requests": 100,
+        "gzip": true
+      },
+      "security": {
+        "server_tokens": false,
+        "autoindex": false,
+        "client_max_body_size": "10m"
+      },
+      "ssl": {
+        "protocols": [
+          "TLSv1.2",
+          "TLSv1.3"
+        ],
+        "ciphers": "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256",
+        "prefer_server_ciphers": true,
+        "session_cache": "shared:SSL:10m",
+        "session_timeout": "1d",
+        "stapling": true
+      }
+    },
+    "redis": {
+      "memory": {
+        "maxmemory": "512MB",
+        "maxmemory_policy": "allkeys-lru",
+        "maxmemory_samples": 5
+      },
+      "persistence": {
+        "save": [
+          "3600 1",
+          "300 100"
+        ],
+        "appendonly": true,
+        "appendfsync": "everysec"
+      },
+      "security": {
+        "protected_mode": true,
+        "requirepass": "change-me-strong-password",
+        "rename_commands": {
+          "FLUSHALL": "",
+          "CONFIG": "CONFIG_a1b2c3"
+        }
+      },
+      "networking": {
+        "bind": [
+          "127.0.0.1"
+        ],
+        "port": 6379,
+        "tls_port": null
+      }
+    },
+    "rabbitmq": null,
+    "pg_hba": null
+  },
+  "validator_report": {
+    "timestamp": "2026-08-08T22:07:29.231074Z",
+    "smoke_tests": {
+      "nginx": {
+        "did_start": true,
+        "accepts_connections": true,
+        "error_message": null
+      },
+      "redis": {
+        "did_start": true,
+        "accepts_connections": true,
+        "error_message": null
+      }
+    },
+    "benchmarks": {
+      "nginx": {
+        "throughput": null,
+        "latency_p50": null,
+        "latency_p90": null,
+        "latency_p99": null,
+        "error_message": "skipped: williamyeh/wrk image is amd64-only; no native ARM64 build available (Apple Silicon limitation)"
+      },
+      "redis": {
+        "throughput": 149286.985,
+        "latency_p50": 0.031,
+        "latency_p90": null,
+        "latency_p99": null,
+        "error_message": null
+      }
+    },
+    "cis_results": [
+      {
+        "control_id": "2.5.1",
+        "name": "server_tokens off (no version in Server header)",
+        "level": 1,
+        "passed": true,
+        "evidence": "Server: nginx",
+        "service": "nginx"
+      },
+      {
+        "control_id": "2.5.2",
+        "name": "autoindex off",
+        "level": 1,
+        "passed": true,
+        "evidence": "no 'autoindex on' found",
+        "service": "nginx"
+      },
+      {
+        "control_id": "4.1.1",
+        "name": "ssl_protocols restricted to TLSv1.2/1.3",
+        "level": 1,
+        "passed": true,
+        "evidence": "ssl_protocols TLSv1.2 TLSv1.3",
+        "service": "nginx"
+      },
+      {
+        "control_id": "4.1.2",
+        "name": "ssl_prefer_server_ciphers on",
+        "level": 1,
+        "passed": true,
+        "evidence": "ssl_prefer_server_ciphers on;",
+        "service": "nginx"
+      },
+      {
+        "control_id": "5.3.1",
+        "name": "X-Frame-Options header configured",
+        "level": 1,
+        "passed": false,
+        "evidence": "X-Frame-Options not configured",
+        "service": "nginx"
+      },
+      {
+        "control_id": "5.3.2",
+        "name": "X-Content-Type-Options header configured",
+        "level": 1,
+        "passed": false,
+        "evidence": "X-Content-Type-Options not configured",
+        "service": "nginx"
+      },
+      {
+        "control_id": "5.3.3",
+        "name": "Strict-Transport-Security header configured",
+        "level": 1,
+        "passed": false,
+        "evidence": "Strict-Transport-Security not configured",
+        "service": "nginx"
+      },
+      {
+        "control_id": "4.1.3",
+        "name": "HTTP to HTTPS 301 redirect present",
+        "level": 1,
+        "passed": false,
+        "evidence": "no 'return 301 https://...' found",
+        "service": "nginx"
+      },
+      {
+        "control_id": "2.4.1",
+        "name": "client_max_body_size set explicitly",
+        "level": 1,
+        "passed": true,
+        "evidence": "client_max_body_size 10m;",
+        "service": "nginx"
+      },
+      {
+        "control_id": "3.1",
+        "name": "access_log enabled",
+        "level": 1,
+        "passed": true,
+        "evidence": "access_log /var/log/nginx/access.log;",
+        "service": "nginx"
+      },
+      {
+        "control_id": "1.1",
+        "name": "protected-mode on",
+        "level": 1,
+        "passed": true,
+        "evidence": "protected-mode yes",
+        "service": "redis"
+      },
+      {
+        "control_id": "1.2",
+        "name": "not bound to 0.0.0.0",
+        "level": 1,
+        "passed": true,
+        "evidence": "bind 127.0.0.1",
+        "service": "redis"
+      },
+      {
+        "control_id": "2.1",
+        "name": "requirepass or ACLs configured",
+        "level": 1,
+        "passed": true,
+        "evidence": "requirepass set",
+        "service": "redis"
+      },
+      {
+        "control_id": "2.2",
+        "name": "authentication enforced at runtime",
+        "level": 1,
+        "passed": true,
+        "evidence": "unauthenticated ping -> NOAUTH Authentication required.",
+        "service": "redis"
+      },
+      {
+        "control_id": "3.1",
+        "name": "dangerous commands renamed or disabled",
+        "level": 1,
+        "passed": false,
+        "evidence": "not renamed: FLUSHDB, EVAL, DEBUG, SHUTDOWN",
+        "service": "redis"
+      },
+      {
+        "control_id": "4.1",
+        "name": "durability configured (AOF or RDB)",
+        "level": 1,
+        "passed": true,
+        "evidence": "appendonly yes; save present",
+        "service": "redis"
+      },
+      {
+        "control_id": "4.2",
+        "name": "maxmemory set (non-zero)",
+        "level": 1,
+        "passed": true,
+        "evidence": "maxmemory 512MB",
+        "service": "redis"
+      },
+      {
+        "control_id": "4.3",
+        "name": "maxmemory-policy not noeviction",
+        "level": 1,
+        "passed": true,
+        "evidence": "maxmemory-policy allkeys-lru",
+        "service": "redis"
+      }
+    ],
+    "healthchecks": {
+      "redis": {
+        "healthcheck_present": true,
+        "healthcheck_condition": "service_healthy"
+      },
+      "nginx": {
+        "healthcheck_present": true,
+        "healthcheck_condition": null
+      }
+    },
+    "error": null
+  },
+  "history": [
+    {
+      "thought": {
+        "reasoning": "The user describes a workload with a high read load and infrequent updates, characteristic of a caching scenario. Given the scale of data (~5 GB) and the concurrent users (~300), a Redis cache seems justified to handle frequent read requests efficiently, reducing the load on the primary database. No mention of regulated compliance or specific security requirements suggests we can prioritize performance and simplicity.\n\nI'll select 'redis' as the required service, with no need for 'postgres' since the data is primarily cached and infrequent updates imply a read-heavy workload. 'nginx' can be used for routing or as a reverse proxy, but since the user wants only the services justified, and they haven't specified the need for web server features, I will include 'nginx' as well, assuming it may serve as a straightforward reverse proxy/load balancer.\n\nI'll prepare a request for generate_config' to build a solution with redis and nginx, tuned for high read performance with the specified memory and scale.",
+        "planned_next_action": "Call generate_config with selected services redis and nginx, and requirements matching the workload details."
+      },
+      "tool_call": {
+        "name": "generate_config",
+        "args": {
+          "partial_spec": {
+            "requirements": {
+              "workload_class": "BALANCED",
+              "expected_concurrent_users": 300,
+              "expected_data_size_gb": 5,
+              "hardware": {
+                "ram_gb": 6,
+                "vcpu": 4
+              },
+              "compliance": "NONE",
+              "backup_required": false
+            },
+            "selected_services": [
+              "redis",
+              "nginx"
+            ]
+          },
+          "mode": "complete"
+        }
+      },
+      "observation": {
+        "success": true,
+        "result": {
+          "config_generated": true,
+          "message": "Configuration generated and cached. Call validate_config to deploy and test it."
+        },
+        "error": null
+      }
+    },
+    {
+      "thought": {
+        "reasoning": "The requirements justify deploying 'redis' for caching and 'nginx' as a reverse proxy. The memory (6 GB RAM) and vCPU (4 vCPU) are suitable for this scale, and the cache will handle the high read load effectively. The configuration has been generated using the LLM with these services, matching the workload profile.",
+        "planned_next_action": "Validate the generated configuration by deploying and testing the stack."
+      },
+      "tool_call": {
+        "name": "validate_config",
+        "args": {
+          "spec": {
+            "requirements": {
+              "workload_class": "BALANCED",
+              "expected_concurrent_users": 300,
+              "expected_data_size_gb": 5.0,
+              "hardware": {
+                "ram_gb": 6.0,
+                "vcpu": 4,
+                "disk_gb": 50.0
+              },
+              "compliance": "NONE",
+              "backup_required": false,
+              "selected_services": null
+            },
+            "postgres": null,
+            "nginx": {
+              "worker": {
+                "worker_processes": "auto",
+                "worker_connections": 1024
+              },
+              "http": {
+                "sendfile": true,
+                "tcp_nopush": true,
+                "tcp_nodelay": true,
+                "keepalive_timeout": 65,
+                "keepalive_requests": 100,
+                "gzip": true
+              },
+              "security": {
+                "server_tokens": false,
+                "autoindex": false,
+                "client_max_body_size": "10m"
+              },
+              "ssl": {
+                "protocols": [
+                  "TLSv1.2",
+                  "TLSv1.3"
+                ],
+                "ciphers": "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256",
+                "prefer_server_ciphers": true,
+                "session_cache": "shared:SSL:10m",
+                "session_timeout": "1d",
+                "stapling": true
+              }
+            },
+            "redis": {
+              "memory": {
+                "maxmemory": "512MB",
+                "maxmemory_policy": "allkeys-lru",
+                "maxmemory_samples": 5
+              },
+              "persistence": {
+                "save": [
+                  "3600 1",
+                  "300 100"
+                ],
+                "appendonly": true,
+                "appendfsync": "everysec"
+              },
+              "security": {
+                "protected_mode": true,
+                "requirepass": "change-me-strong-password",
+                "rename_commands": {
+                  "FLUSHALL": "",
+                  "CONFIG": "CONFIG_a1b2c3"
+                }
+              },
+              "networking": {
+                "bind": [
+                  "127.0.0.1"
+                ],
+                "port": 6379,
+                "tls_port": null
+              }
+            },
+            "rabbitmq": null,
+            "pg_hba": null
+          }
+        }
+      },
+      "observation": {
+        "success": true,
+        "result": {
+          "timestamp": "2026-08-08T22:07:29.231074Z",
+          "smoke_tests": {
+            "nginx": {
+              "did_start": true,
+              "accepts_connections": true,
+              "error_message": null
+            },
+            "redis": {
+              "did_start": true,
+              "accepts_connections": true,
+              "error_message": null
+            }
+          },
+          "benchmarks": {
+            "nginx": {
+              "throughput": null,
+              "latency_p50": null,
+              "latency_p90": null,
+              "latency_p99": null,
+              "error_message": "skipped: williamyeh/wrk image is amd64-only; no native ARM64 build available (Apple Silicon limitation)"
+            },
+            "redis": {
+              "throughput": 149286.985,
+              "latency_p50": 0.031,
+              "latency_p90": null,
+              "latency_p99": null,
+              "error_message": null
+            }
+          },
+          "cis_results": [
+            {
+              "control_id": "2.5.1",
+              "name": "server_tokens off (no version in Server header)",
+              "level": 1,
+              "passed": true,
+              "evidence": "Server: nginx",
+              "service": "nginx"
+            },
+            {
+              "control_id": "2.5.2",
+              "name": "autoindex off",
+              "level": 1,
+              "passed": true,
+              "evidence": "no 'autoindex on' found",
+              "service": "nginx"
+            },
+            {
+              "control_id": "4.1.1",
+              "name": "ssl_protocols restricted to TLSv1.2/1.3",
+              "level": 1,
+              "passed": true,
+              "evidence": "ssl_protocols TLSv1.2 TLSv1.3",
+              "service": "nginx"
+            },
+            {
+              "control_id": "4.1.2",
+              "name": "ssl_prefer_server_ciphers on",
+              "level": 1,
+              "passed": true,
+              "evidence": "ssl_prefer_server_ciphers on;",
+              "service": "nginx"
+            },
+            {
+              "control_id": "5.3.1",
+              "name": "X-Frame-Options header configured",
+              "level": 1,
+              "passed": false,
+              "evidence": "X-Frame-Options not configured",
+              "service": "nginx"
+            },
+            {
+              "control_id": "5.3.2",
+              "name": "X-Content-Type-Options header configured",
+              "level": 1,
+              "passed": false,
+              "evidence": "X-Content-Type-Options not configured",
+              "service": "nginx"
+            },
+            {
+              "control_id": "5.3.3",
+              "name": "Strict-Transport-Security header configured",
+              "level": 1,
+              "passed": false,
+              "evidence": "Strict-Transport-Security not configured",
+              "service": "nginx"
+            },
+            {
+              "control_id": "4.1.3",
+              "name": "HTTP to HTTPS 301 redirect present",
+              "level": 1,
+              "passed": false,
+              "evidence": "no 'return 301 https://...' found",
+              "service": "nginx"
+            },
+            {
+              "control_id": "2.4.1",
+              "name": "client_max_body_size set explicitly",
+              "level": 1,
+              "passed": true,
+              "evidence": "client_max_body_size 10m;",
+              "service": "nginx"
+            },
+            {
+              "control_id": "3.1",
+              "name": "access_log enabled",
+              "level": 1,
+              "passed": true,
+              "evidence": "access_log /var/log/nginx/access.log;",
+              "service": "nginx"
+            },
+            {
+              "control_id": "1.1",
+              "name": "protected-mode on",
+              "level": 1,
+              "passed": true,
+              "evidence": "protected-mode yes",
+              "service": "redis"
+            },
+            {
+              "control_id": "1.2",
+              "name": "not bound to 0.0.0.0",
+              "level": 1,
+              "passed": true,
+              "evidence": "bind 127.0.0.1",
+              "service": "redis"
+            },
+            {
+              "control_id": "2.1",
+              "name": "requirepass or ACLs configured",
+              "level": 1,
+              "passed": true,
+              "evidence": "requirepass set",
+              "service": "redis"
+            },
+            {
+              "control_id": "2.2",
+              "name": "authentication enforced at runtime",
+              "level": 1,
+              "passed": true,
+              "evidence": "unauthenticated ping -> NOAUTH Authentication required.",
+              "service": "redis"
+            },
+            {
+              "control_id": "3.1",
+              "name": "dangerous commands renamed or disabled",
+              "level": 1,
+              "passed": false,
+              "evidence": "not renamed: FLUSHDB, EVAL, DEBUG, SHUTDOWN",
+              "service": "redis"
+            },
+            {
+              "control_id": "4.1",
+              "name": "durability configured (AOF or RDB)",
+              "level": 1,
+              "passed": true,
+              "evidence": "appendonly yes; save present",
+              "service": "redis"
+            },
+            {
+              "control_id": "4.2",
+              "name": "maxmemory set (non-zero)",
+              "level": 1,
+              "passed": true,
+              "evidence": "maxmemory 512MB",
+              "service": "redis"
+            },
+            {
+              "control_id": "4.3",
+              "name": "maxmemory-policy not noeviction",
+              "level": 1,
+              "passed": true,
+              "evidence": "maxmemory-policy allkeys-lru",
+              "service": "redis"
+            }
+          ],
+          "healthchecks": {
+            "redis": {
+              "healthcheck_present": true,
+              "healthcheck_condition": "service_healthy"
+            },
+            "nginx": {
+              "healthcheck_present": true,
+              "healthcheck_condition": null
+            }
+          },
+          "error": null
+        },
+        "error": null
+      }
+    },
+    {
+      "thought": {
+        "reasoning": "The current configuration with Redis and nginx is validated as functional and sufficient for the high read load, infrequent updates, and data size. Since no security or compliance requirements are specified, the existing setup is appropriate. Incorporating a PostgreSQL database would be unnecessary overhead, and RabbitMQ isn't justified for this workload. The primary goal is stability, performance, and cost-efficiency. The next step is to finalize this configuration.",
+        "planned_next_action": "Finalize the current validated configuration as the final solution."
+      },
+      "tool_call": {
+        "name": "finalise",
+        "args": {
+          "final_spec": {
+            "requirements": {
+              "workload_class": "BALANCED",
+              "expected_concurrent_users": 300,
+              "expected_data_size_gb": 5.0,
+              "hardware": {
+                "ram_gb": 6.0,
+                "vcpu": 4,
+                "disk_gb": 50.0
+              },
+              "compliance": "NONE",
+              "backup_required": false,
+              "selected_services": null
+            },
+            "postgres": null,
+            "nginx": {
+              "worker": {
+                "worker_processes": "auto",
+                "worker_connections": 1024
+              },
+              "http": {
+                "sendfile": true,
+                "tcp_nopush": true,
+                "tcp_nodelay": true,
+                "keepalive_timeout": 65,
+                "keepalive_requests": 100,
+                "gzip": true
+              },
+              "security": {
+                "server_tokens": false,
+                "autoindex": false,
+                "client_max_body_size": "10m"
+              },
+              "ssl": {
+                "protocols": [
+                  "TLSv1.2",
+                  "TLSv1.3"
+                ],
+                "ciphers": "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256",
+                "prefer_server_ciphers": true,
+                "session_cache": "shared:SSL:10m",
+                "session_timeout": "1d",
+                "stapling": true
+              }
+            },
+            "redis": {
+              "memory": {
+                "maxmemory": "512MB",
+                "maxmemory_policy": "allkeys-lru",
+                "maxmemory_samples": 5
+              },
+              "persistence": {
+                "save": [
+                  "3600 1",
+                  "300 100"
+                ],
+                "appendonly": true,
+                "appendfsync": "everysec"
+              },
+              "security": {
+                "protected_mode": true,
+                "requirepass": "change-me-strong-password",
+                "rename_commands": {
+                  "FLUSHALL": "",
+                  "CONFIG": "CONFIG_a1b2c3"
+                }
+              },
+              "networking": {
+                "bind": [
+                  "127.0.0.1"
+                ],
+                "port": 6379,
+                "tls_port": null
+              }
+            },
+            "rabbitmq": null,
+            "pg_hba": null
+          },
+          "reason": "The setup with Redis caching and nginx proxy has proven successful in validation tests, matching the workload needs with no additional security or compliance considerations."
+        }
+      },
+      "observation": {
+        "success": true,
+        "result": {
+          "accept": true,
+          "final_spec": {
+            "requirements": {
+              "workload_class": "BALANCED",
+              "expected_concurrent_users": 300,
+              "expected_data_size_gb": 5.0,
+              "hardware": {
+                "ram_gb": 6.0,
+                "vcpu": 4,
+                "disk_gb": 50.0
+              },
+              "compliance": "NONE",
+              "backup_required": false,
+              "selected_services": null
+            },
+            "postgres": null,
+            "nginx": {
+              "worker": {
+                "worker_processes": "auto",
+                "worker_connections": 1024
+              },
+              "http": {
+                "sendfile": true,
+                "tcp_nopush": true,
+                "tcp_nodelay": true,
+                "keepalive_timeout": 65,
+                "keepalive_requests": 100,
+                "gzip": true
+              },
+              "security": {
+                "server_tokens": false,
+                "autoindex": false,
+                "client_max_body_size": "10m"
+              },
+              "ssl": {
+                "protocols": [
+                  "TLSv1.2",
+                  "TLSv1.3"
+                ],
+                "ciphers": "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256",
+                "prefer_server_ciphers": true,
+                "session_cache": "shared:SSL:10m",
+                "session_timeout": "1d",
+                "stapling": true
+              }
+            },
+            "redis": {
+              "memory": {
+                "maxmemory": "512MB",
+                "maxmemory_policy": "allkeys-lru",
+                "maxmemory_samples": 5
+              },
+              "persistence": {
+                "save": [
+                  "3600 1",
+                  "300 100"
+                ],
+                "appendonly": true,
+                "appendfsync": "everysec"
+              },
+              "security": {
+                "protected_mode": true,
+                "requirepass": "change-me-strong-password",
+                "rename_commands": {
+                  "FLUSHALL": "",
+                  "CONFIG": "CONFIG_a1b2c3"
+                }
+              },
+              "networking": {
+                "bind": [
+                  "127.0.0.1"
+                ],
+                "port": 6379,
+                "tls_port": null
+              }
+            },
+            "rabbitmq": null,
+            "pg_hba": null
+          },
+          "reason": "The setup with Redis caching and nginx proxy has proven successful in validation tests, matching the workload needs with no additional security or compliance considerations."
+        },
+        "error": null
+      }
+    }
+  ],
+  "scores": {
+    "completed": true,
+    "cis_pass_rate": 0.7222222222222222,
+    "cis_pass_rate_actionable": 0.9285714285714286,
+    "cis_controls_actionable": 14,
+    "cis_controls_total": 18,
+    "smoke_pass_rate": 1.0,
+    "selection_exact_match": false,
+    "selection_precision": 1.0,
+    "selection_recall": 0.6666666666666666,
+    "selection_f1": 0.8,
+    "selection_detail": [
+      {
+        "service": "postgres",
+        "expected": true,
+        "selected": false,
+        "verdict": "false_negative"
+      },
+      {
+        "service": "nginx",
+        "expected": true,
+        "selected": true,
+        "verdict": "true_positive"
+      },
+      {
+        "service": "redis",
+        "expected": true,
+        "selected": true,
+        "verdict": "true_positive"
+      },
+      {
+        "service": "rabbitmq",
+        "expected": false,
+        "selected": false,
+        "verdict": "true_negative"
+      }
+    ],
+    "correctness": 0.8571428571428571,
+    "parameters_checked": 7,
+    "parameter_details": [
+      {
+        "parameter": "postgres.*",
+        "comparison": null,
+        "expected": [
+          "effective_cache_size_range",
+          "maintenance_work_mem_range",
+          "max_connections_range",
+          "password_encryption",
+          "shared_buffers_range",
+          "ssl"
+        ],
+        "spec_path": "postgres",
+        "actual": null,
+        "passed": null,
+        "status": "not_selected"
+      },
+      {
+        "parameter": "nginx.server_tokens",
+        "comparison": "equality",
+        "expected": false,
+        "spec_path": "nginx.security.server_tokens",
+        "actual": false,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "nginx.ssl_protocols_min",
+        "comparison": "equality",
+        "expected": "TLSv1.2",
+        "spec_path": "nginx.ssl.protocols",
+        "actual_raw": [
+          "TLSv1.2",
+          "TLSv1.3"
+        ],
+        "actual": "TLSv1.2",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.maxmemory_set",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "redis.memory.maxmemory",
+        "actual_raw": "512MB",
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.maxmemory_range",
+        "comparison": "range",
+        "expected": [
+          "922MB",
+          "2.4GB"
+        ],
+        "spec_path": "redis.memory.maxmemory",
+        "actual": "512MB",
+        "passed": false,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.maxmemory_policy_acceptable",
+        "comparison": "membership",
+        "expected": [
+          "allkeys-lru",
+          "allkeys-lfu"
+        ],
+        "spec_path": "redis.memory.maxmemory_policy",
+        "actual": "allkeys-lru",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.requirepass_or_acl",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "redis.security.requirepass",
+        "actual_raw": "change-me-strong-password",
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.protected_mode",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "redis.security.protected_mode",
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      }
+    ]
+  }
+}
