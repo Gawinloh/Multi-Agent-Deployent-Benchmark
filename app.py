@@ -9,10 +9,14 @@ STAYS UP so you can exec into the containers yourself, then a teardown button.
             LEAVING THE STACK RUNNING with ready-to-paste `docker exec`
             commands. A button tears it down when you're done.
 
-The agent's MODEL is scripted (deterministic) so the demo is reliable;
-the ReAct loop, the config rendering, and everything under Output (real
-containers, live exec, CIS checks) is the real system. Requires Docker
-Desktop running.
+The PROCESS panel REPLAYS a recorded run from Study 3 (single-agent,
+scenario s2_006_analytics_estate): the reasoning text, tool calls and
+observations are exactly those the model produced during data collection,
+read from results/runs_study3/. The ReAct loop, the config rendering, and
+everything under Output (real containers, live exec, CIS checks) executes
+for real. Requires Docker Desktop running.
+
+Set REPLAY_RUN to any other run JSON to replay a different one.
 
 Run:  python app.py        then open  http://127.0.0.1:5001
 """
@@ -20,9 +24,12 @@ Run:  python app.py        then open  http://127.0.0.1:5001
 from __future__ import annotations
 
 import copy
+import json
 import logging
+import re
 import subprocess
 import uuid
+from pathlib import Path
 
 import structlog
 
@@ -119,6 +126,33 @@ def _step(reasoning: str, action: str, tool: str, args: dict) -> AgentStep:
                      tool_call=ToolCall(name=tool, args=args))
 
 
+REPLAY_RUN = Path("results/runs_study3/s2_006_analytics_estate/single/c143e5e5770e.json")
+
+
+def _load_replay(path: Path) -> tuple[str, list[AgentStep], list[dict]]:
+    """Read a recorded run and return its prompt, steps and observations.
+
+    The reasoning strings, tool calls and observations are verbatim from the
+    run record, so the PROCESS panel shows what the model actually produced
+    during data collection rather than illustrative text.
+    """
+    rec = json.loads(path.read_text())
+    steps, obs = [], []
+    for entry in rec["history"]:
+        t = entry["thought"]
+        steps.append(AgentStep(
+            thought=AgentThought(
+                reasoning=t["reasoning"],
+                planned_next_action=t.get("planned_next_action") or "continue"),
+            tool_call=ToolCall(name=entry["tool_call"]["name"],
+                               args=entry["tool_call"].get("args") or {})))
+        obs.append(entry["observation"])
+    return rec["scenario_text"], steps, obs
+
+
+REPLAY_PROMPT, REPLAY_STEPS, REPLAY_OBS = _load_replay(REPLAY_RUN)
+
+
 SCRIPT = [
     _step("Small dev stack, 2 vCPU / no compliance. I'll look up sizing guidance "
           "and the CIS authentication baseline first.",
@@ -143,8 +177,10 @@ SCRIPT = [
 ]
 
 
-class ScriptedModel(LLMClient):
-    backend_name = "scripted-web"
+class ReplayModel(LLMClient):
+    """Serves the reasoning and tool calls recorded during a real run."""
+
+    backend_name = "replay-study3"
 
     def __init__(self, steps: list[AgentStep]) -> None:
         self._steps = steps
@@ -154,6 +190,27 @@ class ScriptedModel(LLMClient):
         step = self._steps[min(self._i, len(self._steps) - 1)]
         self._i += 1
         return step, TokenUsage(input_tokens=210, output_tokens=70)
+
+
+def _replay_registry(observations: list[dict]) -> ToolRegistry:
+    """Every tool returns the observation recorded at that step of the run."""
+    reg = ToolRegistry()
+    cursor = {"i": 0}
+
+    def _next(**_kw):
+        i = cursor["i"]
+        cursor["i"] = i + 1
+        rec = observations[min(i, len(observations) - 1)]
+        if not rec.get("success"):
+            raise RuntimeError(rec.get("error") or "recorded failure")
+        return rec.get("result")
+
+    for name, desc, schema in (("query_rag", "search docs", QueryRagInput),
+                               ("generate_config", "render configs", GenerateConfigInput),
+                               ("validate_config", "self-check", ValidateConfigInput),
+                               ("finalise", "accept & stop", FinaliseInput)):
+        reg.register(Tool(name, desc, schema, _next))
+    return reg
 
 
 def _demo_registry() -> ToolRegistry:
@@ -181,26 +238,56 @@ def _demo_registry() -> ToolRegistry:
     return reg
 
 
+def _excerpt(reasoning: str, limit: int = 200) -> str:
+    """First sentence of a recorded reasoning trace.
+
+    Real traces run to 400-800 characters. The panel shows the opening
+    sentence so the step is readable at a glance; the full text is kept on
+    the element's tooltip so nothing is hidden.
+    """
+    text = " ".join(reasoning.split())
+    first = re.split(r"(?<=[.!?])\s+", text)[0]
+    if len(first) > limit:
+        first = first[:limit].rsplit(" ", 1)[0] + "\u2026"
+    elif first != text:
+        first += "\u2026"
+    return first
+
+
 def _summarise(tool: str, obs) -> str:
+    """One-line result summary, shaped to the observations a real run records."""
     if not obs.success:
-        return f"error: {obs.error}"
+        err = str(obs.error or "")
+        if "schema validation" in err:
+            return "schema validation failed after 3 retries — regenerating"
+        return f"error: {err.splitlines()[0][:70]}" if err else "failed"
     r = obs.result
-    if tool == "query_rag":
-        return f"{len(r)} doc chunks retrieved (top: {r[0]['source']})"
-    if tool == "generate_config":
-        return f"rendered configs (postgresql.conf = {len(r['postgresql_conf'].splitlines())} lines)"
-    if tool == "validate_config":
-        return "self-check: auth OK" if r.get("auth_ok") else "self-check: auth FAIL (md5)"
-    if tool == "finalise":
-        return "accepted — auth fixed; ready for full validation"
+    if tool == "query_rag" and isinstance(r, list) and r:
+        return f"{len(r)} doc chunks retrieved (top: {r[0].get('source', '?')})"
+    if tool == "generate_config" and isinstance(r, dict):
+        if "postgresql_conf" in r:
+            return f"rendered configs (postgresql.conf = {len(r['postgresql_conf'].splitlines())} lines)"
+        return r.get("message", "configuration generated")
+    if tool == "validate_config" and isinstance(r, dict):
+        cis = r.get("cis_results") or []          # list of control records
+        passed = sum(1 for c in cis if isinstance(c, dict) and c.get("passed"))
+        smoke = r.get("smoke_tests") or {}        # dict keyed by service
+        up = sum(1 for v in smoke.values() if isinstance(v, dict) and v.get("did_start"))
+        if cis or smoke:
+            return f"{up}/{len(smoke)} services up, {passed}/{len(cis)} CIS controls passed"
+        return "validated"
+    if tool == "finalise" and isinstance(r, dict):
+        return f"accepted — {r.get('reason', 'run complete')}"
     return str(r)[:80]
 
 
 def run_agent(prompt: str) -> dict:
-    agent = SingleAgent(ScriptedModel(SCRIPT), TokenBudget(100_000),
-                        max_iterations=25, registry=_demo_registry())
+    agent = SingleAgent(ReplayModel(REPLAY_STEPS), TokenBudget(100_000),
+                        max_iterations=25, registry=_replay_registry(REPLAY_OBS))
     result = agent.run(prompt)
-    steps = [{"n": i, "tool": e.tool_call.name, "thought": e.thought.reasoning,
+    steps = [{"n": i, "tool": e.tool_call.name,
+              "thought": _excerpt(e.thought.reasoning),
+              "thought_full": " ".join(e.thought.reasoning.split()),
               "result": _summarise(e.tool_call.name, e.observation), "ok": e.observation.success}
              for i, e in enumerate(result.history, 1)]
     final = result.final_spec.model_dump(mode="json") if result.final_spec else SPEC_GOOD
@@ -506,7 +593,7 @@ async function runDemo() {
     const el = document.createElement('div'); el.className = 'step';
     const r = s.ok ? '<span class="ok">'+esc(s.result)+'</span>' : '<span class="no">'+esc(s.result)+'</span>';
     el.innerHTML = '<div class="head">Step '+s.n+' &middot; <span class="tool">'+esc(s.tool)+'</span></div>'
-                 + '<div class="thought">'+esc(s.thought)+'</div><div class="res">&rarr; '+r+'</div>';
+                 + '<div class="thought" title="'+esc(s.thought_full||s.thought)+'">'+esc(s.thought)+'</div><div class="res">&rarr; '+r+'</div>';
     $('#steps').appendChild(el);
     await sleep(60); el.classList.add('show'); await sleep(520);
   }
