@@ -36,7 +36,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SCENARIO_DIR = REPO_ROOT / "benchmark" / "scenarios"
 DEFAULT_OUTPUT = REPO_ROOT / "results" / "runs"
 
-ARCHITECTURES = ("single", "multi")
+ARCHITECTURES = ("single", "multi", "parallel")
 
 
 def discover_scenarios(

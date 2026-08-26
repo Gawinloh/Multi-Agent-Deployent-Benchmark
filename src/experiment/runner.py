@@ -183,6 +183,80 @@ def _run_multi(
     return run_result
 
 
+def _run_parallel(
+    scenario: dict[str, Any],
+    model: str,
+    budget_limit: int,
+    max_iterations: int,
+) -> RunResult:
+    """Execute one parallel per-service run and return a :class:`RunResult`.
+
+    Study 5's exploratory third arm. Structurally identical to
+    :func:`_run_multi` — same shared ``TokenBudget``, same delegation log
+    shape — so the three arms produce comparable records. The two extra
+    fields it records, ``arbitration`` and the concurrency timings, are the
+    ones the star topology has no analogue for.
+    """
+    from src.agents.parallel_agent.manager import ParallelManagerAgent
+    from src.llm.client import get_client
+    from src.llm.token_budget import TokenBudget
+
+    run_result = RunResult(
+        scenario_id=scenario["id"],
+        scenario_text=scenario["request"],
+        architecture="parallel",
+        # Provisional — see _run_single.
+        model=model,
+        max_iterations=max_iterations,
+    )
+    run_result.started_at = RunResult.now_iso()
+    run_result.git_commit, run_result.git_dirty = capture_git_provenance()
+
+    try:
+        model_kwargs: dict[str, Any] = {}
+        if model and model != "default":
+            model_kwargs["model"] = model
+        client = get_client(**model_kwargs)
+        run_result.model = client.model_name
+        budget = TokenBudget(budget_limit)
+        agent = ParallelManagerAgent(
+            client,
+            budget,
+            max_iterations=max_iterations,
+            max_service_iterations=4,
+        )
+
+        agent_result = agent.run(scenario["request"])
+
+        run_result.tokens_used = agent_result.tokens_used
+        run_result.wall_clock_s = agent_result.wall_clock_s
+        run_result.termination_reason = agent_result.termination_reason
+        run_result.history = agent_result.delegation_log
+        run_result.per_agent_tokens = compute_per_agent_tokens(
+            agent_result.delegation_log, agent_result.tokens_used
+        )
+        # Study-5-specific evidence — how often the merge step had to referee,
+        # and whether the fan-out was genuinely concurrent — rides in the
+        # delegation log's "merge" entry rather than in a new RunResult field,
+        # so single and multi records keep their exact existing shape.
+
+        if agent_result.final_spec:
+            run_result.final_spec = agent_result.final_spec.model_dump(mode="json")
+            run_result.services_deployed = [
+                definition.name for definition in for_spec(agent_result.final_spec)
+            ]
+        if agent_result.validator_report:
+            run_result.validator_report = agent_result.validator_report.model_dump(mode="json")
+
+    except Exception as exc:  # noqa: BLE001 — must not crash the CLI
+        run_result.termination_reason = f"runner_error: {exc}"
+        logger.error("run_failed", error=str(exc))
+
+    run_result.finished_at = RunResult.now_iso()
+    run_result.scores = compute_scores(run_result, scenario.get("ground_truth"))
+    return run_result
+
+
 def main(argv: list[str] | None = None) -> None:
     """CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -194,8 +268,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--architecture",
         default="single",
-        choices=["single", "multi"],
-        help="Agent architecture: single (ReAct baseline) or multi (orchestrator + workers)",
+        choices=["single", "multi", "parallel"],
+        help=(
+            "Agent architecture: single (ReAct baseline), multi (star: "
+            "orchestrator + functional workers), or parallel (manager + "
+            "concurrent per-service agents + merge)"
+        ),
     )
     parser.add_argument(
         "--model",
@@ -234,7 +312,11 @@ def main(argv: list[str] | None = None) -> None:
         budget=args.budget,
     )
 
-    run_fn = _run_single if args.architecture == "single" else _run_multi
+    run_fn = {
+        "single": _run_single,
+        "multi": _run_multi,
+        "parallel": _run_parallel,
+    }[args.architecture]
 
     results: list[RunResult] = []
     for i in range(1, args.runs + 1):
