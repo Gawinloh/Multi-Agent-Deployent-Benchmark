@@ -1,0 +1,271 @@
+{
+  "scenario_id": "s2_008_backend_worker",
+  "scenario_text": "This one has no user interface at all. It's a back-office component that picks\nup meter readings our field devices submit through a separate gateway we don't\ncontrol, validates them, and writes them into the readings store \u2014 about 45 GB\nof history. Devices submit in bursts when they come back online, so the work\nhas to sit somewhere until a worker gets to it rather than being dropped.\nRoughly 20 workers running at once. Nothing is ever read back by a person\nthrough this component. Host is 6 GB RAM, 4 vCPU. Nightly backups.\n",
+  "architecture": "parallel",
+  "model": "gpt-4.1-nano-2025-04-14",
+  "git_commit": "e6136b71e216d7d94af878aede1f5751a18bb3f9",
+  "git_dirty": true,
+  "run_id": "03ef27a1ac46",
+  "started_at": "2026-08-26T19:22:04.609176+00:00",
+  "finished_at": "2026-08-26T19:25:17.992208+00:00",
+  "tokens_used": 35038,
+  "per_agent_tokens": {
+    "manager": 1147,
+    "redis": 33891,
+    "merge": 0,
+    "validation": 0,
+    "orchestrator": 0
+  },
+  "wall_clock_s": 193.35032995799702,
+  "max_iterations": 25,
+  "termination_reason": "finalised",
+  "services_deployed": [
+    "redis"
+  ],
+  "final_spec": {
+    "requirements": {
+      "workload_class": "CACHING_HEAVY",
+      "expected_concurrent_users": 20,
+      "expected_data_size_gb": 45.0,
+      "hardware": {
+        "ram_gb": 6.0,
+        "vcpu": 4,
+        "disk_gb": 45.0
+      },
+      "compliance": "NONE",
+      "backup_required": true,
+      "selected_services": [
+        "redis"
+      ]
+    },
+    "postgres": null,
+    "nginx": null,
+    "redis": {
+      "memory": {
+        "maxmemory": "4GB",
+        "maxmemory_policy": "allkeys-lru",
+        "maxmemory_samples": 5
+      },
+      "persistence": {
+        "save": [
+          "3600 1"
+        ],
+        "appendonly": true,
+        "appendfsync": "everysec"
+      },
+      "security": {
+        "protected_mode": true,
+        "requirepass": null,
+        "rename_commands": {}
+      },
+      "networking": {
+        "bind": [
+          "0.0.0.0"
+        ],
+        "port": 6379,
+        "tls_port": null
+      }
+    },
+    "rabbitmq": null,
+    "pg_hba": null
+  },
+  "validator_report": {
+    "timestamp": "2026-08-26T19:25:17.714449Z",
+    "smoke_tests": {
+      "redis": {
+        "did_start": true,
+        "accepts_connections": true,
+        "error_message": null
+      }
+    },
+    "benchmarks": {
+      "redis": {
+        "throughput": 181009.85,
+        "latency_p50": 0.035,
+        "latency_p90": null,
+        "latency_p99": null,
+        "error_message": null
+      }
+    },
+    "cis_results": [
+      {
+        "control_id": "1.1",
+        "name": "protected-mode on",
+        "level": 1,
+        "passed": true,
+        "evidence": "protected-mode yes",
+        "service": "redis"
+      },
+      {
+        "control_id": "1.2",
+        "name": "not bound to 0.0.0.0",
+        "level": 1,
+        "passed": false,
+        "evidence": "bind 0.0.0.0",
+        "service": "redis"
+      },
+      {
+        "control_id": "2.1",
+        "name": "requirepass or ACLs configured",
+        "level": 1,
+        "passed": false,
+        "evidence": "no auth configured",
+        "service": "redis"
+      },
+      {
+        "control_id": "2.2",
+        "name": "authentication enforced at runtime",
+        "level": 1,
+        "passed": false,
+        "evidence": "unauthenticated ping -> PONG",
+        "service": "redis"
+      },
+      {
+        "control_id": "3.1",
+        "name": "dangerous commands renamed or disabled",
+        "level": 1,
+        "passed": false,
+        "evidence": "not renamed: FLUSHALL, FLUSHDB, CONFIG, EVAL, DEBUG, SHUTDOWN",
+        "service": "redis"
+      },
+      {
+        "control_id": "4.1",
+        "name": "durability configured (AOF or RDB)",
+        "level": 1,
+        "passed": true,
+        "evidence": "appendonly yes; save present",
+        "service": "redis"
+      },
+      {
+        "control_id": "4.2",
+        "name": "maxmemory set (non-zero)",
+        "level": 1,
+        "passed": true,
+        "evidence": "maxmemory 4GB",
+        "service": "redis"
+      },
+      {
+        "control_id": "4.3",
+        "name": "maxmemory-policy not noeviction",
+        "level": 1,
+        "passed": true,
+        "evidence": "maxmemory-policy allkeys-lru",
+        "service": "redis"
+      }
+    ],
+    "healthchecks": {
+      "redis": {
+        "healthcheck_present": true,
+        "healthcheck_condition": null
+      }
+    },
+    "error": null
+  },
+  "history": [
+    {
+      "worker": "manager",
+      "task": "decompose",
+      "success": true,
+      "summary": "The system needs to store meter readings (about 45 GB of history) and support asynchronous processing of bursts from devices, with roughly 20 workers processing concurrently. The host has limited RAM (6 GB) and vCPU (4), and nightly backups are required. There is no indication of the need for a relational database or a service for serving web traffic, and the data is primarily written and processed asynchronously without user interaction, suggesting an event-driven, cache-friendly architecture.",
+      "tokens_used": 1147,
+      "selected_services": [
+        "redis"
+      ]
+    },
+    {
+      "worker": "redis",
+      "task": "configure redis",
+      "success": true,
+      "summary": "[2 attempts] redis: generate_config failed, generate_config succeeded; produced a fragment.",
+      "tokens_used": 33891,
+      "iterations_used": 7,
+      "wall_clock_s": 187.492,
+      "tool_calls": [
+        {
+          "name": "generate_config",
+          "success": false
+        },
+        {
+          "name": "generate_config",
+          "success": true
+        }
+      ],
+      "error": ""
+    },
+    {
+      "worker": "merge",
+      "task": "combine fragments and arbitrate shared memory",
+      "success": true,
+      "summary": "Merged 1 fragments (redis). Reservations totalled 4.00GB against a 4.20GB ceiling; no arbitration.",
+      "tokens_used": 0,
+      "arbitration": {
+        "host_ram_bytes": 6442450944,
+        "ceiling_bytes": 4509715660,
+        "requested_bytes": 4294967296,
+        "granted_bytes": 4294967296,
+        "requested_fraction_of_ram": 0.6667,
+        "scale_factor": 1.0,
+        "arbitrated": false,
+        "per_service": {
+          "redis": {
+            "requested_bytes": 4294967296,
+            "granted_bytes": 4294967296
+          }
+        },
+        "notes": [
+          "no arbitration needed: 4294967296 bytes requested within ceiling of 4509715660"
+        ]
+      },
+      "concurrency": {
+        "fan_out_wall_clock_s": 187.494,
+        "sum_agent_wall_clock_s": 187.492,
+        "agents": 1
+      }
+    },
+    {
+      "worker": "validation",
+      "task": "deploy and test the merged spec",
+      "success": true,
+      "tokens_used": 0,
+      "summary": "smoke 1/1; CIS 4/8 (50%); throughput redis=181010"
+    }
+  ],
+  "scores": {
+    "completed": true,
+    "cis_pass_rate": 0.5,
+    "cis_pass_rate_actionable": 0.5,
+    "cis_controls_actionable": 8,
+    "cis_controls_total": 8,
+    "smoke_pass_rate": 1.0,
+    "selection_exact_match": false,
+    "selection_precision": 0.0,
+    "selection_recall": 0.0,
+    "selection_f1": 0.0,
+    "selection_detail": [
+      {
+        "service": "postgres",
+        "expected": true,
+        "selected": false,
+        "verdict": "false_negative"
+      },
+      {
+        "service": "nginx",
+        "expected": false,
+        "selected": false,
+        "verdict": "true_negative"
+      },
+      {
+        "service": "redis",
+        "expected": false,
+        "selected": true,
+        "verdict": "false_positive"
+      },
+      {
+        "service": "rabbitmq",
+        "expected": true,
+        "selected": false,
+        "verdict": "false_negative"
+      }
+    ]
+  }
+}

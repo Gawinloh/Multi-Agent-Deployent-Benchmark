@@ -1,0 +1,356 @@
+{
+  "scenario_id": "s2_003_distractor_queue",
+  "scenario_text": "The architecture doc we inherited mentions a message broker, but I can't see\nwhat it would do here. This is a public parts catalogue: people search it,\nopen a listing, and that's the whole interaction \u2014 everything happens while\nthey wait and there's nothing to do afterwards. It's busy though, around 150 at\nonce at peak, and the popular listings get opened constantly while the\nunderlying catalogue is only reloaded from our supplier once a night. About\n12 GB of parts data. Host is 8 GB RAM, 4 vCPU.\n",
+  "architecture": "parallel",
+  "model": "gpt-4.1-nano-2025-04-14",
+  "git_commit": "e6136b71e216d7d94af878aede1f5751a18bb3f9",
+  "git_dirty": true,
+  "run_id": "008aa88e075d",
+  "started_at": "2026-08-26T17:48:31.068732+00:00",
+  "finished_at": "2026-08-26T17:48:59.826036+00:00",
+  "tokens_used": 8327,
+  "per_agent_tokens": {
+    "manager": 2472,
+    "redis": 5855,
+    "merge": 0,
+    "validation": 0,
+    "orchestrator": 0
+  },
+  "wall_clock_s": 28.708621458994457,
+  "max_iterations": 25,
+  "termination_reason": "finalised",
+  "services_deployed": [
+    "redis"
+  ],
+  "final_spec": {
+    "requirements": {
+      "workload_class": "BALANCED",
+      "expected_concurrent_users": 150,
+      "expected_data_size_gb": 12.0,
+      "hardware": {
+        "ram_gb": 8.0,
+        "vcpu": 4,
+        "disk_gb": 1.0
+      },
+      "compliance": "NONE",
+      "backup_required": false,
+      "selected_services": [
+        "redis"
+      ]
+    },
+    "postgres": null,
+    "nginx": null,
+    "redis": {
+      "memory": {
+        "maxmemory": "512MB",
+        "maxmemory_policy": "allkeys-lru",
+        "maxmemory_samples": 5
+      },
+      "persistence": {
+        "save": [
+          "3600 1",
+          "300 100"
+        ],
+        "appendonly": true,
+        "appendfsync": "everysec"
+      },
+      "security": {
+        "protected_mode": true,
+        "requirepass": "ChangeMeSecure123!",
+        "rename_commands": {
+          "FLUSHALL": "",
+          "CONFIG": "CONFIG_x1a2b"
+        }
+      },
+      "networking": {
+        "bind": [
+          "127.0.0.1"
+        ],
+        "port": 6379,
+        "tls_port": null
+      }
+    },
+    "rabbitmq": null,
+    "pg_hba": null
+  },
+  "validator_report": {
+    "timestamp": "2026-08-26T17:48:59.529980Z",
+    "smoke_tests": {
+      "redis": {
+        "did_start": true,
+        "accepts_connections": true,
+        "error_message": null
+      }
+    },
+    "benchmarks": {
+      "redis": {
+        "throughput": 202205.885,
+        "latency_p50": 0.031,
+        "latency_p90": null,
+        "latency_p99": null,
+        "error_message": null
+      }
+    },
+    "cis_results": [
+      {
+        "control_id": "1.1",
+        "name": "protected-mode on",
+        "level": 1,
+        "passed": true,
+        "evidence": "protected-mode yes",
+        "service": "redis"
+      },
+      {
+        "control_id": "1.2",
+        "name": "not bound to 0.0.0.0",
+        "level": 1,
+        "passed": true,
+        "evidence": "bind 127.0.0.1",
+        "service": "redis"
+      },
+      {
+        "control_id": "2.1",
+        "name": "requirepass or ACLs configured",
+        "level": 1,
+        "passed": true,
+        "evidence": "requirepass set",
+        "service": "redis"
+      },
+      {
+        "control_id": "2.2",
+        "name": "authentication enforced at runtime",
+        "level": 1,
+        "passed": true,
+        "evidence": "unauthenticated ping -> NOAUTH Authentication required.",
+        "service": "redis"
+      },
+      {
+        "control_id": "3.1",
+        "name": "dangerous commands renamed or disabled",
+        "level": 1,
+        "passed": false,
+        "evidence": "not renamed: FLUSHDB, EVAL, DEBUG, SHUTDOWN",
+        "service": "redis"
+      },
+      {
+        "control_id": "4.1",
+        "name": "durability configured (AOF or RDB)",
+        "level": 1,
+        "passed": true,
+        "evidence": "appendonly yes; save present",
+        "service": "redis"
+      },
+      {
+        "control_id": "4.2",
+        "name": "maxmemory set (non-zero)",
+        "level": 1,
+        "passed": true,
+        "evidence": "maxmemory 512MB",
+        "service": "redis"
+      },
+      {
+        "control_id": "4.3",
+        "name": "maxmemory-policy not noeviction",
+        "level": 1,
+        "passed": true,
+        "evidence": "maxmemory-policy allkeys-lru",
+        "service": "redis"
+      }
+    ],
+    "healthchecks": {
+      "redis": {
+        "healthcheck_present": true,
+        "healthcheck_condition": null
+      }
+    },
+    "error": null
+  },
+  "history": [
+    {
+      "worker": "manager",
+      "task": "decompose",
+      "success": true,
+      "summary": "The request mentions a message broker, but the use case is straightforward and does not require asynchronous messaging. The data size and concurrency favor using an in-memory cache for fast reads. Based on the host specs (8 GB RAM, 4 vCPU), Redis is appropriate for caching 'parts data' to improve read performance during peak loads.",
+      "tokens_used": 2472,
+      "selected_services": [
+        "redis"
+      ]
+    },
+    {
+      "worker": "redis",
+      "task": "configure redis",
+      "success": true,
+      "summary": "redis: generate_config succeeded; produced a fragment.",
+      "tokens_used": 5855,
+      "iterations_used": 1,
+      "wall_clock_s": 22.337,
+      "tool_calls": [
+        {
+          "name": "generate_config",
+          "success": true
+        }
+      ],
+      "error": ""
+    },
+    {
+      "worker": "merge",
+      "task": "combine fragments and arbitrate shared memory",
+      "success": true,
+      "summary": "Merged 1 fragments (redis). Reservations totalled 0.50GB against a 5.60GB ceiling; no arbitration.",
+      "tokens_used": 0,
+      "arbitration": {
+        "host_ram_bytes": 8589934592,
+        "ceiling_bytes": 6012954214,
+        "requested_bytes": 536870912,
+        "granted_bytes": 536870912,
+        "requested_fraction_of_ram": 0.0625,
+        "scale_factor": 1.0,
+        "arbitrated": false,
+        "per_service": {
+          "redis": {
+            "requested_bytes": 536870912,
+            "granted_bytes": 536870912
+          }
+        },
+        "notes": [
+          "no arbitration needed: 536870912 bytes requested within ceiling of 6012954214"
+        ]
+      },
+      "concurrency": {
+        "fan_out_wall_clock_s": 22.338,
+        "sum_agent_wall_clock_s": 22.337,
+        "agents": 1
+      }
+    },
+    {
+      "worker": "validation",
+      "task": "deploy and test the merged spec",
+      "success": true,
+      "tokens_used": 0,
+      "summary": "smoke 1/1; CIS 7/8 (88%); throughput redis=202206"
+    }
+  ],
+  "scores": {
+    "completed": true,
+    "cis_pass_rate": 0.875,
+    "cis_pass_rate_actionable": 0.875,
+    "cis_controls_actionable": 8,
+    "cis_controls_total": 8,
+    "smoke_pass_rate": 1.0,
+    "selection_exact_match": false,
+    "selection_precision": 1.0,
+    "selection_recall": 0.3333333333333333,
+    "selection_f1": 0.5,
+    "selection_detail": [
+      {
+        "service": "postgres",
+        "expected": true,
+        "selected": false,
+        "verdict": "false_negative"
+      },
+      {
+        "service": "nginx",
+        "expected": true,
+        "selected": false,
+        "verdict": "false_negative"
+      },
+      {
+        "service": "redis",
+        "expected": true,
+        "selected": true,
+        "verdict": "true_positive"
+      },
+      {
+        "service": "rabbitmq",
+        "expected": false,
+        "selected": false,
+        "verdict": "true_negative"
+      }
+    ],
+    "correctness": 0.8,
+    "parameters_checked": 5,
+    "parameter_details": [
+      {
+        "parameter": "postgres.*",
+        "comparison": null,
+        "expected": [
+          "effective_cache_size_range",
+          "maintenance_work_mem_range",
+          "max_connections_range",
+          "password_encryption",
+          "shared_buffers_range",
+          "ssl"
+        ],
+        "spec_path": "postgres",
+        "actual": null,
+        "passed": null,
+        "status": "not_selected"
+      },
+      {
+        "parameter": "nginx.*",
+        "comparison": null,
+        "expected": [
+          "server_tokens",
+          "ssl_protocols_min"
+        ],
+        "spec_path": "nginx",
+        "actual": null,
+        "passed": null,
+        "status": "not_selected"
+      },
+      {
+        "parameter": "redis.maxmemory_set",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "redis.memory.maxmemory",
+        "actual_raw": "512MB",
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.maxmemory_range",
+        "comparison": "range",
+        "expected": [
+          "1.2GB",
+          "3.2GB"
+        ],
+        "spec_path": "redis.memory.maxmemory",
+        "actual": "512MB",
+        "passed": false,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.maxmemory_policy_acceptable",
+        "comparison": "membership",
+        "expected": [
+          "allkeys-lru",
+          "allkeys-lfu"
+        ],
+        "spec_path": "redis.memory.maxmemory_policy",
+        "actual": "allkeys-lru",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.requirepass_or_acl",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "redis.security.requirepass",
+        "actual_raw": "ChangeMeSecure123!",
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.protected_mode",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "redis.security.protected_mode",
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      }
+    ]
+  }
+}

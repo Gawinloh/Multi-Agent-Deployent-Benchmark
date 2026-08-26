@@ -1,0 +1,622 @@
+{
+  "scenario_id": "s2_004_inferred_queue",
+  "scenario_text": "Orders come in through the website all day, but we don't take payment at the\ntime. They pile up and a run goes through them overnight to charge the card\nand book stock, then each customer gets an email the next morning telling them\nwhat happened. The website itself is straightforward \u2014 around 40 people\nordering at once at peak, roughly 20 GB of order history. Each order is\nread once by the overnight run and rarely looked at again. Host is 8 GB RAM,\n4 vCPU, and we need nightly backups.\n",
+  "architecture": "parallel",
+  "model": "gpt-4.1-nano-2025-04-14",
+  "git_commit": "e6136b71e216d7d94af878aede1f5751a18bb3f9",
+  "git_dirty": true,
+  "run_id": "71a44819601d",
+  "started_at": "2026-08-26T18:13:52.321619+00:00",
+  "finished_at": "2026-08-26T18:24:43.151685+00:00",
+  "tokens_used": 99491,
+  "per_agent_tokens": {
+    "manager": 1110,
+    "nginx": 5881,
+    "rabbitmq": 5964,
+    "postgres": 86536,
+    "merge": 0,
+    "validation": 0,
+    "orchestrator": 0
+  },
+  "wall_clock_s": 650.7646277089952,
+  "max_iterations": 25,
+  "termination_reason": "finalised",
+  "services_deployed": [
+    "nginx",
+    "rabbitmq"
+  ],
+  "final_spec": {
+    "requirements": {
+      "workload_class": "BALANCED",
+      "expected_concurrent_users": 40,
+      "expected_data_size_gb": 20.0,
+      "hardware": {
+        "ram_gb": 8.0,
+        "vcpu": 4,
+        "disk_gb": 20.0
+      },
+      "compliance": "NONE",
+      "backup_required": true,
+      "selected_services": [
+        "nginx",
+        "rabbitmq"
+      ]
+    },
+    "postgres": null,
+    "nginx": {
+      "worker": {
+        "worker_processes": "auto",
+        "worker_connections": 1024
+      },
+      "http": {
+        "sendfile": true,
+        "tcp_nopush": true,
+        "tcp_nodelay": true,
+        "keepalive_timeout": 65,
+        "keepalive_requests": 100,
+        "gzip": true
+      },
+      "security": {
+        "server_tokens": false,
+        "autoindex": false,
+        "client_max_body_size": "10m"
+      },
+      "ssl": {
+        "protocols": [
+          "TLSv1.2",
+          "TLSv1.3"
+        ],
+        "ciphers": "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256",
+        "prefer_server_ciphers": true,
+        "session_cache": "shared:SSL:10m",
+        "session_timeout": "1d",
+        "stapling": true
+      }
+    },
+    "redis": null,
+    "rabbitmq": {
+      "resources": {
+        "vm_memory_high_watermark": 0.4,
+        "vm_memory_high_watermark_paging_ratio": 0.5,
+        "disk_free_limit": "2GB"
+      },
+      "networking": {
+        "listener_port": 5672,
+        "listener_ip": "0.0.0.0",
+        "max_connections": 1000,
+        "heartbeat": 60
+      },
+      "security": {
+        "default_user": "appuser",
+        "default_pass": "change-me-strong-password",
+        "loopback_users": [
+          "guest"
+        ],
+        "tls_enabled": false,
+        "tls_port": 5671,
+        "tls_verify_peer": false
+      },
+      "management": {
+        "enabled": true,
+        "port": 15672,
+        "listener_ip": "127.0.0.1"
+      }
+    },
+    "pg_hba": null
+  },
+  "validator_report": {
+    "timestamp": "2026-08-26T18:24:41.715868Z",
+    "smoke_tests": {
+      "nginx": {
+        "did_start": true,
+        "accepts_connections": true,
+        "error_message": null
+      },
+      "rabbitmq": {
+        "did_start": true,
+        "accepts_connections": true,
+        "error_message": null
+      }
+    },
+    "benchmarks": {
+      "nginx": {
+        "throughput": null,
+        "latency_p50": null,
+        "latency_p90": null,
+        "latency_p99": null,
+        "error_message": "skipped: williamyeh/wrk image is amd64-only; no native ARM64 build available (Apple Silicon limitation)"
+      },
+      "rabbitmq": {
+        "throughput": 37323.0,
+        "latency_p50": 250.746,
+        "latency_p90": null,
+        "latency_p99": 1494.086,
+        "error_message": null
+      }
+    },
+    "cis_results": [
+      {
+        "control_id": "2.5.1",
+        "name": "server_tokens off (no version in Server header)",
+        "level": 1,
+        "passed": true,
+        "evidence": "Server: nginx",
+        "service": "nginx"
+      },
+      {
+        "control_id": "2.5.2",
+        "name": "autoindex off",
+        "level": 1,
+        "passed": true,
+        "evidence": "no 'autoindex on' found",
+        "service": "nginx"
+      },
+      {
+        "control_id": "4.1.1",
+        "name": "ssl_protocols restricted to TLSv1.2/1.3",
+        "level": 1,
+        "passed": true,
+        "evidence": "ssl_protocols TLSv1.2 TLSv1.3",
+        "service": "nginx"
+      },
+      {
+        "control_id": "4.1.2",
+        "name": "ssl_prefer_server_ciphers on",
+        "level": 1,
+        "passed": true,
+        "evidence": "ssl_prefer_server_ciphers on;",
+        "service": "nginx"
+      },
+      {
+        "control_id": "5.3.1",
+        "name": "X-Frame-Options header configured",
+        "level": 1,
+        "passed": false,
+        "evidence": "X-Frame-Options not configured",
+        "service": "nginx"
+      },
+      {
+        "control_id": "5.3.2",
+        "name": "X-Content-Type-Options header configured",
+        "level": 1,
+        "passed": false,
+        "evidence": "X-Content-Type-Options not configured",
+        "service": "nginx"
+      },
+      {
+        "control_id": "5.3.3",
+        "name": "Strict-Transport-Security header configured",
+        "level": 1,
+        "passed": false,
+        "evidence": "Strict-Transport-Security not configured",
+        "service": "nginx"
+      },
+      {
+        "control_id": "4.1.3",
+        "name": "HTTP to HTTPS 301 redirect present",
+        "level": 1,
+        "passed": false,
+        "evidence": "no 'return 301 https://...' found",
+        "service": "nginx"
+      },
+      {
+        "control_id": "2.4.1",
+        "name": "client_max_body_size set explicitly",
+        "level": 1,
+        "passed": true,
+        "evidence": "client_max_body_size 10m;",
+        "service": "nginx"
+      },
+      {
+        "control_id": "3.1",
+        "name": "access_log enabled",
+        "level": 1,
+        "passed": true,
+        "evidence": "access_log /var/log/nginx/access.log;",
+        "service": "nginx"
+      },
+      {
+        "control_id": "1.1",
+        "name": "heartbeat enabled (non-zero)",
+        "level": 1,
+        "passed": true,
+        "evidence": "heartbeat = 60",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "1.2",
+        "name": "max_connections bounded",
+        "level": 1,
+        "passed": true,
+        "evidence": "max_connections = 1000",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "2.1",
+        "name": "default guest user absent",
+        "level": 1,
+        "passed": true,
+        "evidence": "users: appuser, user",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "2.2",
+        "name": "default_user is not 'guest'",
+        "level": 1,
+        "passed": true,
+        "evidence": "default_user = appuser",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "2.3",
+        "name": "default password not the shipped 'guest'",
+        "level": 1,
+        "passed": true,
+        "evidence": "default_pass is set and differs from the default",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "2.4",
+        "name": "guest/guest login refused at runtime",
+        "level": 1,
+        "passed": true,
+        "evidence": "authenticate_user guest guest -> exit 65: Authenticating user \"guest\" ...\nError:\nError: failed to authenticate user \"guest\"\nuser 'guest' - invalid credentials",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "2.5",
+        "name": "no account holds blanket administrator tag",
+        "level": 1,
+        "passed": false,
+        "evidence": "administrator accounts: 1",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "3.1",
+        "name": "management listener not on a wildcard interface",
+        "level": 1,
+        "passed": true,
+        "evidence": "management.tcp.ip = 127.0.0.1",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "3.2",
+        "name": "management listener bound to an internal interface",
+        "level": 1,
+        "passed": true,
+        "evidence": "Interface: 127.0.0.1, port: 15672, protocol: http, purpose: HTTP API",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "3.3",
+        "name": "management plugin not loaded",
+        "level": 1,
+        "passed": false,
+        "evidence": "is_enabled rabbitmq_management -> exit 0: Plugin rabbitmq_management is enabled on node rabbit@570723bfdbbf",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "4.1",
+        "name": "memory high watermark below 1.0",
+        "level": 1,
+        "passed": true,
+        "evidence": "vm_memory_high_watermark.relative = 0.4",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "4.2",
+        "name": "disk free limit configured",
+        "level": 1,
+        "passed": true,
+        "evidence": "disk_free_limit.absolute = 2GB",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "5.1",
+        "name": "TLS (AMQPS) listener enabled",
+        "level": 1,
+        "passed": false,
+        "evidence": "no amqp/ssl listener",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "5.2",
+        "name": "TLS peer verification enabled",
+        "level": 1,
+        "passed": false,
+        "evidence": "tls listener absent; ssl_options.verify = None",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "6.1",
+        "name": "Erlang distribution port not on a wildcard interface",
+        "level": 1,
+        "passed": false,
+        "evidence": "Interface: [::], port: 25672, protocol: clustering, purpose: inter-node and CLI tool communication",
+        "service": "rabbitmq"
+      }
+    ],
+    "healthchecks": {
+      "nginx": {
+        "healthcheck_present": true,
+        "healthcheck_condition": null
+      },
+      "rabbitmq": {
+        "healthcheck_present": true,
+        "healthcheck_condition": null
+      }
+    },
+    "error": null
+  },
+  "history": [
+    {
+      "worker": "manager",
+      "task": "decompose",
+      "success": true,
+      "summary": "The system needs a database to store order history, a message broker for processing order events, and a web server to serve the website. Redis isn't explicitly required since there's no mention of in-memory caching for repeated reads. The workload includes batch processing and email notifications, which can be handled by the database and message broker together.",
+      "tokens_used": 1110,
+      "selected_services": [
+        "postgres",
+        "rabbitmq",
+        "nginx"
+      ]
+    },
+    {
+      "worker": "nginx",
+      "task": "configure nginx",
+      "success": true,
+      "summary": "nginx: generate_config succeeded; produced a fragment.",
+      "tokens_used": 5881,
+      "iterations_used": 1,
+      "wall_clock_s": 5.367,
+      "tool_calls": [
+        {
+          "name": "generate_config",
+          "success": true
+        }
+      ],
+      "error": ""
+    },
+    {
+      "worker": "rabbitmq",
+      "task": "configure rabbitmq",
+      "success": true,
+      "summary": "rabbitmq: generate_config succeeded; produced a fragment.",
+      "tokens_used": 5964,
+      "iterations_used": 1,
+      "wall_clock_s": 5.93,
+      "tool_calls": [
+        {
+          "name": "generate_config",
+          "success": true
+        }
+      ],
+      "error": ""
+    },
+    {
+      "worker": "postgres",
+      "task": "configure postgres",
+      "success": false,
+      "summary": "[3 attempts] postgres: generate_config failed, generate_config failed, generate_config failed, generate_config failed, generate_config failed; produced no fragment.",
+      "tokens_used": 86536,
+      "iterations_used": 15,
+      "wall_clock_s": 620.712,
+      "tool_calls": [
+        {
+          "name": "generate_config",
+          "success": false
+        },
+        {
+          "name": "generate_config",
+          "success": false
+        },
+        {
+          "name": "generate_config",
+          "success": false
+        },
+        {
+          "name": "generate_config",
+          "success": false
+        },
+        {
+          "name": "generate_config",
+          "success": false
+        }
+      ],
+      "error": ""
+    },
+    {
+      "worker": "merge",
+      "task": "combine fragments and arbitrate shared memory",
+      "success": true,
+      "summary": "Merged 2 fragments (nginx, rabbitmq). Reservations totalled 3.20GB against a 5.60GB ceiling; no arbitration.",
+      "tokens_used": 0,
+      "arbitration": {
+        "host_ram_bytes": 8589934592,
+        "ceiling_bytes": 6012954214,
+        "requested_bytes": 3435973836,
+        "granted_bytes": 3435973836,
+        "requested_fraction_of_ram": 0.4,
+        "scale_factor": 1.0,
+        "arbitrated": false,
+        "per_service": {
+          "rabbitmq": {
+            "requested_bytes": 3435973836,
+            "granted_bytes": 3435973836
+          }
+        },
+        "notes": [
+          "no arbitration needed: 3435973836 bytes requested within ceiling of 6012954214"
+        ]
+      },
+      "concurrency": {
+        "fan_out_wall_clock_s": 620.713,
+        "sum_agent_wall_clock_s": 632.009,
+        "agents": 3
+      }
+    },
+    {
+      "worker": "validation",
+      "task": "deploy and test the merged spec",
+      "success": true,
+      "tokens_used": 0,
+      "summary": "smoke 2/2; CIS 16/25 (64%); throughput rabbitmq=37323"
+    }
+  ],
+  "scores": {
+    "completed": true,
+    "cis_pass_rate": 0.64,
+    "cis_pass_rate_actionable": 0.8888888888888888,
+    "cis_controls_actionable": 18,
+    "cis_controls_total": 25,
+    "smoke_pass_rate": 1.0,
+    "selection_exact_match": false,
+    "selection_precision": 1.0,
+    "selection_recall": 0.6666666666666666,
+    "selection_f1": 0.8,
+    "selection_detail": [
+      {
+        "service": "postgres",
+        "expected": true,
+        "selected": false,
+        "verdict": "false_negative"
+      },
+      {
+        "service": "nginx",
+        "expected": true,
+        "selected": true,
+        "verdict": "true_positive"
+      },
+      {
+        "service": "redis",
+        "expected": false,
+        "selected": false,
+        "verdict": "true_negative"
+      },
+      {
+        "service": "rabbitmq",
+        "expected": true,
+        "selected": true,
+        "verdict": "true_positive"
+      }
+    ],
+    "correctness": 1.0,
+    "parameters_checked": 9,
+    "parameter_details": [
+      {
+        "parameter": "postgres.*",
+        "comparison": null,
+        "expected": [
+          "effective_cache_size_range",
+          "maintenance_work_mem_range",
+          "max_connections_range",
+          "password_encryption",
+          "shared_buffers_range",
+          "ssl",
+          "wal_level_acceptable"
+        ],
+        "spec_path": "postgres",
+        "actual": null,
+        "passed": null,
+        "status": "not_selected"
+      },
+      {
+        "parameter": "nginx.server_tokens",
+        "comparison": "equality",
+        "expected": false,
+        "spec_path": "nginx.security.server_tokens",
+        "actual": false,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "nginx.ssl_protocols_min",
+        "comparison": "equality",
+        "expected": "TLSv1.2",
+        "spec_path": "nginx.ssl.protocols",
+        "actual_raw": [
+          "TLSv1.2",
+          "TLSv1.3"
+        ],
+        "actual": "TLSv1.2",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "rabbitmq.vm_memory_high_watermark_range",
+        "comparison": "range",
+        "expected": [
+          0.3,
+          0.6
+        ],
+        "spec_path": "rabbitmq.resources.vm_memory_high_watermark",
+        "actual": 0.4,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "rabbitmq.disk_free_limit_range",
+        "comparison": "range",
+        "expected": [
+          "500MB",
+          "8GB"
+        ],
+        "spec_path": "rabbitmq.resources.disk_free_limit",
+        "actual": "2GB",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "rabbitmq.heartbeat_range",
+        "comparison": "range",
+        "expected": [
+          10,
+          120
+        ],
+        "spec_path": "rabbitmq.networking.heartbeat",
+        "actual": 60,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "rabbitmq.default_user_not_guest",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "rabbitmq.security.default_user",
+        "actual_raw": "appuser",
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "rabbitmq.default_pass_set",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "rabbitmq.security.default_pass",
+        "actual_raw": "change-me-strong-password",
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "rabbitmq.max_connections_set",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "rabbitmq.networking.max_connections",
+        "actual_raw": 1000,
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "rabbitmq.management_listener_ip",
+        "comparison": "equality",
+        "expected": "127.0.0.1",
+        "spec_path": "rabbitmq.management.listener_ip",
+        "actual": "127.0.0.1",
+        "passed": true,
+        "status": "compared"
+      }
+    ]
+  }
+}

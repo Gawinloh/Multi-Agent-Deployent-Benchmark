@@ -1,0 +1,355 @@
+{
+  "scenario_id": "s2_005_inferred_cache",
+  "scenario_text": "It's a price comparison page. The same twenty or so listings get requested\nthousands of times an hour \u2014 everyone lands on the same handful \u2014 and the\nprices behind them only get refreshed from suppliers three or four times a\nday. Between refreshes the answer to every request is identical. Around 300 \npeople on the site at once, roughly 5 GB of listing and price data. The box\nis 6 GB RAM, 4 vCPU. Nothing regulated.\n",
+  "architecture": "parallel",
+  "model": "gpt-4.1-nano-2025-04-14",
+  "git_commit": "e6136b71e216d7d94af878aede1f5751a18bb3f9",
+  "git_dirty": true,
+  "run_id": "de0365ab0419",
+  "started_at": "2026-08-26T18:33:01.276306+00:00",
+  "finished_at": "2026-08-26T18:33:27.391157+00:00",
+  "tokens_used": 14668,
+  "per_agent_tokens": {
+    "manager": 1133,
+    "redis": 13535,
+    "merge": 0,
+    "validation": 0,
+    "orchestrator": 0
+  },
+  "wall_clock_s": 26.076872749996255,
+  "max_iterations": 25,
+  "termination_reason": "finalised",
+  "services_deployed": [
+    "redis"
+  ],
+  "final_spec": {
+    "requirements": {
+      "workload_class": "CACHING_HEAVY",
+      "expected_concurrent_users": 300,
+      "expected_data_size_gb": 5.0,
+      "hardware": {
+        "ram_gb": 6.0,
+        "vcpu": 4,
+        "disk_gb": 6.0
+      },
+      "compliance": "NONE",
+      "backup_required": false,
+      "selected_services": [
+        "redis"
+      ]
+    },
+    "postgres": null,
+    "nginx": null,
+    "redis": {
+      "memory": {
+        "maxmemory": "512MB",
+        "maxmemory_policy": "allkeys-lru",
+        "maxmemory_samples": 5
+      },
+      "persistence": {
+        "save": [
+          "3600 1"
+        ],
+        "appendonly": true,
+        "appendfsync": "everysec"
+      },
+      "security": {
+        "protected_mode": true,
+        "requirepass": null,
+        "rename_commands": {}
+      },
+      "networking": {
+        "bind": [
+          "127.0.0.1"
+        ],
+        "port": 6379,
+        "tls_port": null
+      }
+    },
+    "rabbitmq": null,
+    "pg_hba": null
+  },
+  "validator_report": {
+    "timestamp": "2026-08-26T18:33:27.091153Z",
+    "smoke_tests": {
+      "redis": {
+        "did_start": true,
+        "accepts_connections": true,
+        "error_message": null
+      }
+    },
+    "benchmarks": {
+      "redis": {
+        "throughput": 225430.6,
+        "latency_p50": 0.031,
+        "latency_p90": null,
+        "latency_p99": null,
+        "error_message": null
+      }
+    },
+    "cis_results": [
+      {
+        "control_id": "1.1",
+        "name": "protected-mode on",
+        "level": 1,
+        "passed": true,
+        "evidence": "protected-mode yes",
+        "service": "redis"
+      },
+      {
+        "control_id": "1.2",
+        "name": "not bound to 0.0.0.0",
+        "level": 1,
+        "passed": true,
+        "evidence": "bind 127.0.0.1",
+        "service": "redis"
+      },
+      {
+        "control_id": "2.1",
+        "name": "requirepass or ACLs configured",
+        "level": 1,
+        "passed": false,
+        "evidence": "no auth configured",
+        "service": "redis"
+      },
+      {
+        "control_id": "2.2",
+        "name": "authentication enforced at runtime",
+        "level": 1,
+        "passed": false,
+        "evidence": "unauthenticated ping -> PONG",
+        "service": "redis"
+      },
+      {
+        "control_id": "3.1",
+        "name": "dangerous commands renamed or disabled",
+        "level": 1,
+        "passed": false,
+        "evidence": "not renamed: FLUSHALL, FLUSHDB, CONFIG, EVAL, DEBUG, SHUTDOWN",
+        "service": "redis"
+      },
+      {
+        "control_id": "4.1",
+        "name": "durability configured (AOF or RDB)",
+        "level": 1,
+        "passed": true,
+        "evidence": "appendonly yes; save present",
+        "service": "redis"
+      },
+      {
+        "control_id": "4.2",
+        "name": "maxmemory set (non-zero)",
+        "level": 1,
+        "passed": true,
+        "evidence": "maxmemory 512MB",
+        "service": "redis"
+      },
+      {
+        "control_id": "4.3",
+        "name": "maxmemory-policy not noeviction",
+        "level": 1,
+        "passed": true,
+        "evidence": "maxmemory-policy allkeys-lru",
+        "service": "redis"
+      }
+    ],
+    "healthchecks": {
+      "redis": {
+        "healthcheck_present": true,
+        "healthcheck_condition": null
+      }
+    },
+    "error": null
+  },
+  "history": [
+    {
+      "worker": "manager",
+      "task": "decompose",
+      "success": true,
+      "summary": "The workload involves many repeated reads of the same data, with infrequent updates, which indicates high caching needs. A redis cache would significantly reduce the load on the database and speed up responses. Since the data is static for hours and the main need is fast read access, redis is appropriate. The data size is around 5 GB, which fits in the available RAM, making caching very effective. The data store needs are well-served by redis, and the existing data size and read-heavy nature jus",
+      "tokens_used": 1133,
+      "selected_services": [
+        "redis"
+      ]
+    },
+    {
+      "worker": "redis",
+      "task": "configure redis",
+      "success": true,
+      "summary": "redis: generate_config failed, generate_config succeeded; produced a fragment.",
+      "tokens_used": 13535,
+      "iterations_used": 2,
+      "wall_clock_s": 21.604,
+      "tool_calls": [
+        {
+          "name": "generate_config",
+          "success": false
+        },
+        {
+          "name": "generate_config",
+          "success": true
+        }
+      ],
+      "error": ""
+    },
+    {
+      "worker": "merge",
+      "task": "combine fragments and arbitrate shared memory",
+      "success": true,
+      "summary": "Merged 1 fragments (redis). Reservations totalled 0.50GB against a 4.20GB ceiling; no arbitration.",
+      "tokens_used": 0,
+      "arbitration": {
+        "host_ram_bytes": 6442450944,
+        "ceiling_bytes": 4509715660,
+        "requested_bytes": 536870912,
+        "granted_bytes": 536870912,
+        "requested_fraction_of_ram": 0.0833,
+        "scale_factor": 1.0,
+        "arbitrated": false,
+        "per_service": {
+          "redis": {
+            "requested_bytes": 536870912,
+            "granted_bytes": 536870912
+          }
+        },
+        "notes": [
+          "no arbitration needed: 536870912 bytes requested within ceiling of 4509715660"
+        ]
+      },
+      "concurrency": {
+        "fan_out_wall_clock_s": 21.605,
+        "sum_agent_wall_clock_s": 21.604,
+        "agents": 1
+      }
+    },
+    {
+      "worker": "validation",
+      "task": "deploy and test the merged spec",
+      "success": true,
+      "tokens_used": 0,
+      "summary": "smoke 1/1; CIS 5/8 (62%); throughput redis=225431"
+    }
+  ],
+  "scores": {
+    "completed": true,
+    "cis_pass_rate": 0.625,
+    "cis_pass_rate_actionable": 0.625,
+    "cis_controls_actionable": 8,
+    "cis_controls_total": 8,
+    "smoke_pass_rate": 1.0,
+    "selection_exact_match": false,
+    "selection_precision": 1.0,
+    "selection_recall": 0.3333333333333333,
+    "selection_f1": 0.5,
+    "selection_detail": [
+      {
+        "service": "postgres",
+        "expected": true,
+        "selected": false,
+        "verdict": "false_negative"
+      },
+      {
+        "service": "nginx",
+        "expected": true,
+        "selected": false,
+        "verdict": "false_negative"
+      },
+      {
+        "service": "redis",
+        "expected": true,
+        "selected": true,
+        "verdict": "true_positive"
+      },
+      {
+        "service": "rabbitmq",
+        "expected": false,
+        "selected": false,
+        "verdict": "true_negative"
+      }
+    ],
+    "correctness": 0.6,
+    "parameters_checked": 5,
+    "parameter_details": [
+      {
+        "parameter": "postgres.*",
+        "comparison": null,
+        "expected": [
+          "effective_cache_size_range",
+          "maintenance_work_mem_range",
+          "max_connections_range",
+          "password_encryption",
+          "shared_buffers_range",
+          "ssl"
+        ],
+        "spec_path": "postgres",
+        "actual": null,
+        "passed": null,
+        "status": "not_selected"
+      },
+      {
+        "parameter": "nginx.*",
+        "comparison": null,
+        "expected": [
+          "server_tokens",
+          "ssl_protocols_min"
+        ],
+        "spec_path": "nginx",
+        "actual": null,
+        "passed": null,
+        "status": "not_selected"
+      },
+      {
+        "parameter": "redis.maxmemory_set",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "redis.memory.maxmemory",
+        "actual_raw": "512MB",
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.maxmemory_range",
+        "comparison": "range",
+        "expected": [
+          "922MB",
+          "2.4GB"
+        ],
+        "spec_path": "redis.memory.maxmemory",
+        "actual": "512MB",
+        "passed": false,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.maxmemory_policy_acceptable",
+        "comparison": "membership",
+        "expected": [
+          "allkeys-lru",
+          "allkeys-lfu"
+        ],
+        "spec_path": "redis.memory.maxmemory_policy",
+        "actual": "allkeys-lru",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.requirepass_or_acl",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "redis.security.requirepass",
+        "actual": null,
+        "passed": false,
+        "status": "missing"
+      },
+      {
+        "parameter": "redis.protected_mode",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "redis.security.protected_mode",
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      }
+    ]
+  }
+}

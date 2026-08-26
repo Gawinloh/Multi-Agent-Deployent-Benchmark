@@ -1,0 +1,595 @@
+{
+  "scenario_id": "s2_003_distractor_queue",
+  "scenario_text": "The architecture doc we inherited mentions a message broker, but I can't see\nwhat it would do here. This is a public parts catalogue: people search it,\nopen a listing, and that's the whole interaction \u2014 everything happens while\nthey wait and there's nothing to do afterwards. It's busy though, around 150 at\nonce at peak, and the popular listings get opened constantly while the\nunderlying catalogue is only reloaded from our supplier once a night. About\n12 GB of parts data. Host is 8 GB RAM, 4 vCPU.\n",
+  "architecture": "parallel",
+  "model": "gpt-4.1-nano-2025-04-14",
+  "git_commit": "e6136b71e216d7d94af878aede1f5751a18bb3f9",
+  "git_dirty": true,
+  "run_id": "95f70b4b14b1",
+  "started_at": "2026-08-26T17:59:56.507453+00:00",
+  "finished_at": "2026-08-26T18:00:52.889841+00:00",
+  "tokens_used": 24797,
+  "per_agent_tokens": {
+    "manager": 1091,
+    "nginx": 6229,
+    "postgres": 17477,
+    "merge": 0,
+    "validation": 0,
+    "orchestrator": 0
+  },
+  "wall_clock_s": 56.33063050000055,
+  "max_iterations": 25,
+  "termination_reason": "finalised",
+  "services_deployed": [
+    "postgres",
+    "nginx"
+  ],
+  "final_spec": {
+    "requirements": {
+      "workload_class": "OLTP",
+      "expected_concurrent_users": 150,
+      "expected_data_size_gb": 12.0,
+      "hardware": {
+        "ram_gb": 8.0,
+        "vcpu": 4,
+        "disk_gb": 12.0
+      },
+      "compliance": "NONE",
+      "backup_required": false,
+      "selected_services": [
+        "nginx",
+        "postgres"
+      ]
+    },
+    "postgres": {
+      "memory": {
+        "shared_buffers": "2GB",
+        "effective_cache_size": "6GB",
+        "work_mem": "32MB",
+        "maintenance_work_mem": "512MB"
+      },
+      "connections": {
+        "max_connections": 300,
+        "superuser_reserved_connections": 3
+      },
+      "wal": {
+        "wal_level": "replica",
+        "checkpoint_completion_target": 0.9,
+        "max_wal_size": "1GB"
+      },
+      "security": {
+        "ssl": false,
+        "password_encryption": "scram-sha-256",
+        "log_connections": true,
+        "log_disconnections": true,
+        "ssl_min_protocol_version": "TLSv1.2"
+      },
+      "logging": {
+        "log_destination": "stderr",
+        "log_statement": "ddl",
+        "log_min_duration_statement": 1000
+      },
+      "listen_addresses": "*"
+    },
+    "nginx": {
+      "worker": {
+        "worker_processes": "auto",
+        "worker_connections": 1024
+      },
+      "http": {
+        "sendfile": true,
+        "tcp_nopush": true,
+        "tcp_nodelay": true,
+        "keepalive_timeout": 65,
+        "keepalive_requests": 100,
+        "gzip": true
+      },
+      "security": {
+        "server_tokens": false,
+        "autoindex": false,
+        "client_max_body_size": "10m"
+      },
+      "ssl": {
+        "protocols": [
+          "TLSv1.2",
+          "TLSv1.3"
+        ],
+        "ciphers": "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256",
+        "prefer_server_ciphers": true,
+        "session_cache": "shared:SSL:10m",
+        "session_timeout": "1d",
+        "stapling": true
+      }
+    },
+    "redis": null,
+    "rabbitmq": null,
+    "pg_hba": {
+      "rules": [
+        {
+          "type": "local",
+          "database": "all",
+          "user": "all",
+          "address": null,
+          "auth_method": "peer"
+        },
+        {
+          "type": "host",
+          "database": "all",
+          "user": "all",
+          "address": "127.0.0.1/32",
+          "auth_method": "scram-sha-256"
+        },
+        {
+          "type": "hostssl",
+          "database": "all",
+          "user": "all",
+          "address": "0.0.0.0/0",
+          "auth_method": "scram-sha-256"
+        }
+      ]
+    }
+  },
+  "validator_report": {
+    "timestamp": "2026-08-26T18:00:52.434983Z",
+    "smoke_tests": {
+      "postgres": {
+        "did_start": true,
+        "accepts_connections": true,
+        "error_message": null
+      },
+      "nginx": {
+        "did_start": true,
+        "accepts_connections": true,
+        "error_message": null
+      }
+    },
+    "benchmarks": {
+      "postgres": {
+        "throughput": 3673.151782,
+        "latency_p50": 1.089,
+        "latency_p90": null,
+        "latency_p99": null,
+        "error_message": null
+      },
+      "nginx": {
+        "throughput": null,
+        "latency_p50": null,
+        "latency_p90": null,
+        "latency_p99": null,
+        "error_message": "skipped: williamyeh/wrk image is amd64-only; no native ARM64 build available (Apple Silicon limitation)"
+      }
+    },
+    "cis_results": [
+      {
+        "control_id": "1.1",
+        "name": "pg_hba host rules use scram-sha-256 (md5 absent)",
+        "level": 1,
+        "passed": true,
+        "evidence": "# pg_hba.conf - generated, do not edit by hand\n# TYPE\tDATABASE\tUSER\tADDRESS\tMETHOD\nlocal\tall\tall\tpeer\nhost\tall\tall\t127.0.0.1/32\tscram-sha-256\nhostssl\tall\tall\t0.0.0.0/0\tscram-sha-256\n",
+        "service": "postgres"
+      },
+      {
+        "control_id": "1.2",
+        "name": "password_encryption is scram-sha-256",
+        "level": 1,
+        "passed": true,
+        "evidence": "password_encryption = scram-sha-256",
+        "service": "postgres"
+      },
+      {
+        "control_id": "2.1",
+        "name": "log_destination set",
+        "level": 1,
+        "passed": true,
+        "evidence": "log_destination = stderr",
+        "service": "postgres"
+      },
+      {
+        "control_id": "2.2",
+        "name": "log_statement at least ddl",
+        "level": 1,
+        "passed": true,
+        "evidence": "log_statement = ddl",
+        "service": "postgres"
+      },
+      {
+        "control_id": "2.3",
+        "name": "log_connections on",
+        "level": 1,
+        "passed": true,
+        "evidence": "log_connections = on",
+        "service": "postgres"
+      },
+      {
+        "control_id": "2.4",
+        "name": "log_disconnections on",
+        "level": 1,
+        "passed": true,
+        "evidence": "log_disconnections = on",
+        "service": "postgres"
+      },
+      {
+        "control_id": "2.5",
+        "name": "pgAudit extension enabled",
+        "level": 1,
+        "passed": false,
+        "evidence": "extensions: plpgsql",
+        "service": "postgres"
+      },
+      {
+        "control_id": "3.1",
+        "name": "listen_addresses not '*'",
+        "level": 1,
+        "passed": false,
+        "evidence": "listen_addresses = *",
+        "service": "postgres"
+      },
+      {
+        "control_id": "3.2",
+        "name": "ssl on",
+        "level": 1,
+        "passed": false,
+        "evidence": "ssl = off",
+        "service": "postgres"
+      },
+      {
+        "control_id": "3.3",
+        "name": "ssl_min_protocol_version >= TLSv1.2",
+        "level": 1,
+        "passed": true,
+        "evidence": "ssl_min_protocol_version = TLSv1.2",
+        "service": "postgres"
+      },
+      {
+        "control_id": "4.1",
+        "name": "postgres owns no application databases",
+        "level": 1,
+        "passed": true,
+        "evidence": "postgres-owned app databases: none",
+        "service": "postgres"
+      },
+      {
+        "control_id": "4.2",
+        "name": "no superuser roles besides postgres",
+        "level": 1,
+        "passed": true,
+        "evidence": "extra superusers: none",
+        "service": "postgres"
+      },
+      {
+        "control_id": "5.1",
+        "name": "log_min_duration_statement > 0",
+        "level": 1,
+        "passed": true,
+        "evidence": "log_min_duration_statement = 1s",
+        "service": "postgres"
+      },
+      {
+        "control_id": "5.2",
+        "name": "statement_timeout set",
+        "level": 1,
+        "passed": false,
+        "evidence": "statement_timeout = 0",
+        "service": "postgres"
+      },
+      {
+        "control_id": "2.5.1",
+        "name": "server_tokens off (no version in Server header)",
+        "level": 1,
+        "passed": true,
+        "evidence": "Server: nginx",
+        "service": "nginx"
+      },
+      {
+        "control_id": "2.5.2",
+        "name": "autoindex off",
+        "level": 1,
+        "passed": true,
+        "evidence": "no 'autoindex on' found",
+        "service": "nginx"
+      },
+      {
+        "control_id": "4.1.1",
+        "name": "ssl_protocols restricted to TLSv1.2/1.3",
+        "level": 1,
+        "passed": true,
+        "evidence": "ssl_protocols TLSv1.2 TLSv1.3",
+        "service": "nginx"
+      },
+      {
+        "control_id": "4.1.2",
+        "name": "ssl_prefer_server_ciphers on",
+        "level": 1,
+        "passed": true,
+        "evidence": "ssl_prefer_server_ciphers on;",
+        "service": "nginx"
+      },
+      {
+        "control_id": "5.3.1",
+        "name": "X-Frame-Options header configured",
+        "level": 1,
+        "passed": false,
+        "evidence": "X-Frame-Options not configured",
+        "service": "nginx"
+      },
+      {
+        "control_id": "5.3.2",
+        "name": "X-Content-Type-Options header configured",
+        "level": 1,
+        "passed": false,
+        "evidence": "X-Content-Type-Options not configured",
+        "service": "nginx"
+      },
+      {
+        "control_id": "5.3.3",
+        "name": "Strict-Transport-Security header configured",
+        "level": 1,
+        "passed": false,
+        "evidence": "Strict-Transport-Security not configured",
+        "service": "nginx"
+      },
+      {
+        "control_id": "4.1.3",
+        "name": "HTTP to HTTPS 301 redirect present",
+        "level": 1,
+        "passed": false,
+        "evidence": "no 'return 301 https://...' found",
+        "service": "nginx"
+      },
+      {
+        "control_id": "2.4.1",
+        "name": "client_max_body_size set explicitly",
+        "level": 1,
+        "passed": true,
+        "evidence": "client_max_body_size 10m;",
+        "service": "nginx"
+      },
+      {
+        "control_id": "3.1",
+        "name": "access_log enabled",
+        "level": 1,
+        "passed": true,
+        "evidence": "access_log /var/log/nginx/access.log;",
+        "service": "nginx"
+      }
+    ],
+    "healthchecks": {
+      "postgres": {
+        "healthcheck_present": true,
+        "healthcheck_condition": "service_healthy"
+      },
+      "nginx": {
+        "healthcheck_present": true,
+        "healthcheck_condition": null
+      }
+    },
+    "error": null
+  },
+  "history": [
+    {
+      "worker": "manager",
+      "task": "decompose",
+      "success": true,
+      "summary": "The message broker was mentioned in the architecture doc, but it is not necessary here because the interaction is synchronous and users wait for the page to load. There's no need for asynchronous message passing or background tasks, so rabbitmq is excluded.",
+      "tokens_used": 1091,
+      "selected_services": [
+        "nginx",
+        "postgres"
+      ]
+    },
+    {
+      "worker": "nginx",
+      "task": "configure nginx",
+      "success": true,
+      "summary": "nginx: generate_config succeeded; produced a fragment.",
+      "tokens_used": 6229,
+      "iterations_used": 1,
+      "wall_clock_s": 10.372,
+      "tool_calls": [
+        {
+          "name": "generate_config",
+          "success": true
+        }
+      ],
+      "error": ""
+    },
+    {
+      "worker": "postgres",
+      "task": "configure postgres",
+      "success": true,
+      "summary": "postgres: generate_config succeeded; produced a fragment.",
+      "tokens_used": 17477,
+      "iterations_used": 1,
+      "wall_clock_s": 34.298,
+      "tool_calls": [
+        {
+          "name": "generate_config",
+          "success": true
+        }
+      ],
+      "error": ""
+    },
+    {
+      "worker": "merge",
+      "task": "combine fragments and arbitrate shared memory",
+      "success": true,
+      "summary": "Merged 2 fragments (nginx, postgres). Reservations totalled 2.00GB against a 5.60GB ceiling; no arbitration.",
+      "tokens_used": 0,
+      "arbitration": {
+        "host_ram_bytes": 8589934592,
+        "ceiling_bytes": 6012954214,
+        "requested_bytes": 2147483648,
+        "granted_bytes": 2147483648,
+        "requested_fraction_of_ram": 0.25,
+        "scale_factor": 1.0,
+        "arbitrated": false,
+        "per_service": {
+          "postgres": {
+            "requested_bytes": 2147483648,
+            "granted_bytes": 2147483648
+          }
+        },
+        "notes": [
+          "no arbitration needed: 2147483648 bytes requested within ceiling of 6012954214"
+        ]
+      },
+      "concurrency": {
+        "fan_out_wall_clock_s": 34.303,
+        "sum_agent_wall_clock_s": 44.67,
+        "agents": 2
+      }
+    },
+    {
+      "worker": "validation",
+      "task": "deploy and test the merged spec",
+      "success": true,
+      "tokens_used": 0,
+      "summary": "smoke 2/2; CIS 16/24 (67%); throughput postgres=3673.15"
+    }
+  ],
+  "scores": {
+    "completed": true,
+    "cis_pass_rate": 0.6666666666666666,
+    "cis_pass_rate_actionable": 0.8888888888888888,
+    "cis_controls_actionable": 18,
+    "cis_controls_total": 24,
+    "smoke_pass_rate": 1.0,
+    "selection_exact_match": false,
+    "selection_precision": 1.0,
+    "selection_recall": 0.6666666666666666,
+    "selection_f1": 0.8,
+    "selection_detail": [
+      {
+        "service": "postgres",
+        "expected": true,
+        "selected": true,
+        "verdict": "true_positive"
+      },
+      {
+        "service": "nginx",
+        "expected": true,
+        "selected": true,
+        "verdict": "true_positive"
+      },
+      {
+        "service": "redis",
+        "expected": true,
+        "selected": false,
+        "verdict": "false_negative"
+      },
+      {
+        "service": "rabbitmq",
+        "expected": false,
+        "selected": false,
+        "verdict": "true_negative"
+      }
+    ],
+    "correctness": 0.75,
+    "parameters_checked": 8,
+    "parameter_details": [
+      {
+        "parameter": "postgres.shared_buffers_range",
+        "comparison": "range",
+        "expected": [
+          "1.2GB",
+          "2.8GB"
+        ],
+        "spec_path": "postgres.memory.shared_buffers",
+        "actual": "2GB",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.effective_cache_size_range",
+        "comparison": "range",
+        "expected": [
+          "3.2GB",
+          "6GB"
+        ],
+        "spec_path": "postgres.memory.effective_cache_size",
+        "actual": "6GB",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.maintenance_work_mem_range",
+        "comparison": "range",
+        "expected": [
+          "256MB",
+          "1GB"
+        ],
+        "spec_path": "postgres.memory.maintenance_work_mem",
+        "actual": "512MB",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.max_connections_range",
+        "comparison": "range",
+        "expected": [
+          38,
+          120
+        ],
+        "spec_path": "postgres.connections.max_connections",
+        "actual": 300,
+        "passed": false,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.ssl",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "postgres.security.ssl",
+        "actual": false,
+        "passed": false,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.password_encryption",
+        "comparison": "equality",
+        "expected": "scram-sha-256",
+        "spec_path": "postgres.security.password_encryption",
+        "actual": "scram-sha-256",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "nginx.server_tokens",
+        "comparison": "equality",
+        "expected": false,
+        "spec_path": "nginx.security.server_tokens",
+        "actual": false,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "nginx.ssl_protocols_min",
+        "comparison": "equality",
+        "expected": "TLSv1.2",
+        "spec_path": "nginx.ssl.protocols",
+        "actual_raw": [
+          "TLSv1.2",
+          "TLSv1.3"
+        ],
+        "actual": "TLSv1.2",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.*",
+        "comparison": null,
+        "expected": [
+          "maxmemory_policy_acceptable",
+          "maxmemory_range",
+          "maxmemory_set",
+          "protected_mode",
+          "requirepass_or_acl"
+        ],
+        "spec_path": "redis",
+        "actual": null,
+        "passed": null,
+        "status": "not_selected"
+      }
+    ]
+  }
+}

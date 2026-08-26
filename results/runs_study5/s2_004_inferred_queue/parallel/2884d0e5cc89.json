@@ -1,0 +1,699 @@
+{
+  "scenario_id": "s2_004_inferred_queue",
+  "scenario_text": "Orders come in through the website all day, but we don't take payment at the\ntime. They pile up and a run goes through them overnight to charge the card\nand book stock, then each customer gets an email the next morning telling them\nwhat happened. The website itself is straightforward \u2014 around 40 people\nordering at once at peak, roughly 20 GB of order history. Each order is\nread once by the overnight run and rarely looked at again. Host is 8 GB RAM,\n4 vCPU, and we need nightly backups.\n",
+  "architecture": "parallel",
+  "model": "gpt-4.1-nano-2025-04-14",
+  "git_commit": "e6136b71e216d7d94af878aede1f5751a18bb3f9",
+  "git_dirty": true,
+  "run_id": "2884d0e5cc89",
+  "started_at": "2026-08-26T18:30:07.323375+00:00",
+  "finished_at": "2026-08-26T18:31:03.863266+00:00",
+  "tokens_used": 32314,
+  "per_agent_tokens": {
+    "manager": 1156,
+    "rabbitmq": 12449,
+    "postgres": 18709,
+    "merge": 0,
+    "validation": 0,
+    "orchestrator": 0
+  },
+  "wall_clock_s": 56.48918304199469,
+  "max_iterations": 25,
+  "termination_reason": "finalised",
+  "services_deployed": [
+    "postgres",
+    "rabbitmq"
+  ],
+  "final_spec": {
+    "requirements": {
+      "workload_class": "OLTP",
+      "expected_concurrent_users": 40,
+      "expected_data_size_gb": 20.0,
+      "hardware": {
+        "ram_gb": 8.0,
+        "vcpu": 4,
+        "disk_gb": 20.0
+      },
+      "compliance": "NONE",
+      "backup_required": true,
+      "selected_services": [
+        "postgres",
+        "rabbitmq"
+      ]
+    },
+    "postgres": {
+      "memory": {
+        "shared_buffers": "2GB",
+        "effective_cache_size": "6GB",
+        "work_mem": "32MB",
+        "maintenance_work_mem": "512MB"
+      },
+      "connections": {
+        "max_connections": 100,
+        "superuser_reserved_connections": 3
+      },
+      "wal": {
+        "wal_level": "replica",
+        "checkpoint_completion_target": 0.9,
+        "max_wal_size": "1GB"
+      },
+      "security": {
+        "ssl": true,
+        "password_encryption": "scram-sha-256",
+        "log_connections": true,
+        "log_disconnections": true,
+        "ssl_min_protocol_version": "TLSv1.2"
+      },
+      "logging": {
+        "log_destination": "stderr",
+        "log_statement": "ddl",
+        "log_min_duration_statement": 1000
+      },
+      "listen_addresses": "*"
+    },
+    "nginx": null,
+    "redis": null,
+    "rabbitmq": {
+      "resources": {
+        "vm_memory_high_watermark": 0.4,
+        "vm_memory_high_watermark_paging_ratio": 0.5,
+        "disk_free_limit": "2GB"
+      },
+      "networking": {
+        "listener_port": 5672,
+        "listener_ip": "0.0.0.0",
+        "max_connections": 500,
+        "heartbeat": 60
+      },
+      "security": {
+        "default_user": "appuser",
+        "default_pass": "change-me-strong-password",
+        "loopback_users": [
+          "guest"
+        ],
+        "tls_enabled": false,
+        "tls_port": 5671,
+        "tls_verify_peer": false
+      },
+      "management": {
+        "enabled": true,
+        "port": 15672,
+        "listener_ip": "127.0.0.1"
+      }
+    },
+    "pg_hba": {
+      "rules": [
+        {
+          "type": "local",
+          "database": "all",
+          "user": "all",
+          "address": null,
+          "auth_method": "peer"
+        },
+        {
+          "type": "host",
+          "database": "all",
+          "user": "all",
+          "address": "127.0.0.1/32",
+          "auth_method": "scram-sha-256"
+        },
+        {
+          "type": "hostssl",
+          "database": "all",
+          "user": "all",
+          "address": "0.0.0.0/0",
+          "auth_method": "scram-sha-256"
+        }
+      ]
+    }
+  },
+  "validator_report": {
+    "timestamp": "2026-08-26T18:31:02.382502Z",
+    "smoke_tests": {
+      "postgres": {
+        "did_start": true,
+        "accepts_connections": true,
+        "error_message": null
+      },
+      "rabbitmq": {
+        "did_start": true,
+        "accepts_connections": true,
+        "error_message": null
+      }
+    },
+    "benchmarks": {
+      "postgres": {
+        "throughput": 3061.281339,
+        "latency_p50": 1.307,
+        "latency_p90": null,
+        "latency_p99": null,
+        "error_message": null
+      },
+      "rabbitmq": {
+        "throughput": 40219.0,
+        "latency_p50": 246.30100000000002,
+        "latency_p90": null,
+        "latency_p99": 1083.4660000000001,
+        "error_message": null
+      }
+    },
+    "cis_results": [
+      {
+        "control_id": "1.1",
+        "name": "pg_hba host rules use scram-sha-256 (md5 absent)",
+        "level": 1,
+        "passed": true,
+        "evidence": "# pg_hba.conf - generated, do not edit by hand\n# TYPE\tDATABASE\tUSER\tADDRESS\tMETHOD\nlocal\tall\tall\tpeer\nhost\tall\tall\t127.0.0.1/32\tscram-sha-256\nhostssl\tall\tall\t0.0.0.0/0\tscram-sha-256\n",
+        "service": "postgres"
+      },
+      {
+        "control_id": "1.2",
+        "name": "password_encryption is scram-sha-256",
+        "level": 1,
+        "passed": true,
+        "evidence": "password_encryption = scram-sha-256",
+        "service": "postgres"
+      },
+      {
+        "control_id": "2.1",
+        "name": "log_destination set",
+        "level": 1,
+        "passed": true,
+        "evidence": "log_destination = stderr",
+        "service": "postgres"
+      },
+      {
+        "control_id": "2.2",
+        "name": "log_statement at least ddl",
+        "level": 1,
+        "passed": true,
+        "evidence": "log_statement = ddl",
+        "service": "postgres"
+      },
+      {
+        "control_id": "2.3",
+        "name": "log_connections on",
+        "level": 1,
+        "passed": true,
+        "evidence": "log_connections = on",
+        "service": "postgres"
+      },
+      {
+        "control_id": "2.4",
+        "name": "log_disconnections on",
+        "level": 1,
+        "passed": true,
+        "evidence": "log_disconnections = on",
+        "service": "postgres"
+      },
+      {
+        "control_id": "2.5",
+        "name": "pgAudit extension enabled",
+        "level": 1,
+        "passed": false,
+        "evidence": "extensions: plpgsql",
+        "service": "postgres"
+      },
+      {
+        "control_id": "3.1",
+        "name": "listen_addresses not '*'",
+        "level": 1,
+        "passed": false,
+        "evidence": "listen_addresses = *",
+        "service": "postgres"
+      },
+      {
+        "control_id": "3.2",
+        "name": "ssl on",
+        "level": 1,
+        "passed": true,
+        "evidence": "ssl = on",
+        "service": "postgres"
+      },
+      {
+        "control_id": "3.3",
+        "name": "ssl_min_protocol_version >= TLSv1.2",
+        "level": 1,
+        "passed": true,
+        "evidence": "ssl_min_protocol_version = TLSv1.2",
+        "service": "postgres"
+      },
+      {
+        "control_id": "4.1",
+        "name": "postgres owns no application databases",
+        "level": 1,
+        "passed": true,
+        "evidence": "postgres-owned app databases: none",
+        "service": "postgres"
+      },
+      {
+        "control_id": "4.2",
+        "name": "no superuser roles besides postgres",
+        "level": 1,
+        "passed": true,
+        "evidence": "extra superusers: none",
+        "service": "postgres"
+      },
+      {
+        "control_id": "5.1",
+        "name": "log_min_duration_statement > 0",
+        "level": 1,
+        "passed": true,
+        "evidence": "log_min_duration_statement = 1s",
+        "service": "postgres"
+      },
+      {
+        "control_id": "5.2",
+        "name": "statement_timeout set",
+        "level": 1,
+        "passed": false,
+        "evidence": "statement_timeout = 0",
+        "service": "postgres"
+      },
+      {
+        "control_id": "1.1",
+        "name": "heartbeat enabled (non-zero)",
+        "level": 1,
+        "passed": true,
+        "evidence": "heartbeat = 60",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "1.2",
+        "name": "max_connections bounded",
+        "level": 1,
+        "passed": true,
+        "evidence": "max_connections = 500",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "2.1",
+        "name": "default guest user absent",
+        "level": 1,
+        "passed": true,
+        "evidence": "users: appuser, user",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "2.2",
+        "name": "default_user is not 'guest'",
+        "level": 1,
+        "passed": true,
+        "evidence": "default_user = appuser",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "2.3",
+        "name": "default password not the shipped 'guest'",
+        "level": 1,
+        "passed": true,
+        "evidence": "default_pass is set and differs from the default",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "2.4",
+        "name": "guest/guest login refused at runtime",
+        "level": 1,
+        "passed": true,
+        "evidence": "authenticate_user guest guest -> exit 65: Authenticating user \"guest\" ...\nError:\nError: failed to authenticate user \"guest\"\nuser 'guest' - invalid credentials",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "2.5",
+        "name": "no account holds blanket administrator tag",
+        "level": 1,
+        "passed": false,
+        "evidence": "administrator accounts: 1",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "3.1",
+        "name": "management listener not on a wildcard interface",
+        "level": 1,
+        "passed": true,
+        "evidence": "management.tcp.ip = 127.0.0.1",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "3.2",
+        "name": "management listener bound to an internal interface",
+        "level": 1,
+        "passed": true,
+        "evidence": "Interface: 127.0.0.1, port: 15672, protocol: http, purpose: HTTP API",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "3.3",
+        "name": "management plugin not loaded",
+        "level": 1,
+        "passed": false,
+        "evidence": "is_enabled rabbitmq_management -> exit 0: Plugin rabbitmq_management is enabled on node rabbit@ebc3a2677bcd",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "4.1",
+        "name": "memory high watermark below 1.0",
+        "level": 1,
+        "passed": true,
+        "evidence": "vm_memory_high_watermark.relative = 0.4",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "4.2",
+        "name": "disk free limit configured",
+        "level": 1,
+        "passed": true,
+        "evidence": "disk_free_limit.absolute = 2GB",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "5.1",
+        "name": "TLS (AMQPS) listener enabled",
+        "level": 1,
+        "passed": false,
+        "evidence": "no amqp/ssl listener",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "5.2",
+        "name": "TLS peer verification enabled",
+        "level": 1,
+        "passed": false,
+        "evidence": "tls listener absent; ssl_options.verify = None",
+        "service": "rabbitmq"
+      },
+      {
+        "control_id": "6.1",
+        "name": "Erlang distribution port not on a wildcard interface",
+        "level": 1,
+        "passed": false,
+        "evidence": "Interface: [::], port: 25672, protocol: clustering, purpose: inter-node and CLI tool communication",
+        "service": "rabbitmq"
+      }
+    ],
+    "healthchecks": {
+      "postgres": {
+        "healthcheck_present": true,
+        "healthcheck_condition": null
+      },
+      "rabbitmq": {
+        "healthcheck_present": true,
+        "healthcheck_condition": null
+      }
+    },
+    "error": null
+  },
+  "history": [
+    {
+      "worker": "manager",
+      "task": "decompose",
+      "success": true,
+      "summary": "The system processes a high volume of incoming orders without immediate payment, indicating a need for a robust database to store and manage orders, and a queue to handle the overnight batch process. The website serves as a front-end, but since the main processing is overnight, the core requirements are the database and message queue. The order history is read once and rarely accessed afterwards, suggesting caching is not a priority. The host has 8 GB RAM, 4 vCPU, and nightly backups are needed,",
+      "tokens_used": 1156,
+      "selected_services": [
+        "postgres",
+        "rabbitmq"
+      ]
+    },
+    {
+      "worker": "rabbitmq",
+      "task": "configure rabbitmq",
+      "success": true,
+      "summary": "rabbitmq: generate_config succeeded; produced a fragment.",
+      "tokens_used": 12449,
+      "iterations_used": 1,
+      "wall_clock_s": 15.774,
+      "tool_calls": [
+        {
+          "name": "generate_config",
+          "success": true
+        }
+      ],
+      "error": ""
+    },
+    {
+      "worker": "postgres",
+      "task": "configure postgres",
+      "success": true,
+      "summary": "postgres: generate_config succeeded; produced a fragment.",
+      "tokens_used": 18709,
+      "iterations_used": 1,
+      "wall_clock_s": 20.307,
+      "tool_calls": [
+        {
+          "name": "generate_config",
+          "success": true
+        }
+      ],
+      "error": ""
+    },
+    {
+      "worker": "merge",
+      "task": "combine fragments and arbitrate shared memory",
+      "success": true,
+      "summary": "Merged 2 fragments (postgres, rabbitmq). Reservations totalled 5.20GB against a 5.60GB ceiling; no arbitration.",
+      "tokens_used": 0,
+      "arbitration": {
+        "host_ram_bytes": 8589934592,
+        "ceiling_bytes": 6012954214,
+        "requested_bytes": 5583457484,
+        "granted_bytes": 5583457484,
+        "requested_fraction_of_ram": 0.65,
+        "scale_factor": 1.0,
+        "arbitrated": false,
+        "per_service": {
+          "postgres": {
+            "requested_bytes": 2147483648,
+            "granted_bytes": 2147483648
+          },
+          "rabbitmq": {
+            "requested_bytes": 3435973836,
+            "granted_bytes": 3435973836
+          }
+        },
+        "notes": [
+          "no arbitration needed: 5583457484 bytes requested within ceiling of 6012954214"
+        ]
+      },
+      "concurrency": {
+        "fan_out_wall_clock_s": 20.308,
+        "sum_agent_wall_clock_s": 36.081,
+        "agents": 2
+      }
+    },
+    {
+      "worker": "validation",
+      "task": "deploy and test the merged spec",
+      "success": true,
+      "tokens_used": 0,
+      "summary": "smoke 2/2; CIS 21/29 (72%); throughput postgres=3061.28, rabbitmq=40219"
+    }
+  ],
+  "scores": {
+    "completed": true,
+    "cis_pass_rate": 0.7241379310344828,
+    "cis_pass_rate_actionable": 0.875,
+    "cis_controls_actionable": 24,
+    "cis_controls_total": 29,
+    "smoke_pass_rate": 1.0,
+    "selection_exact_match": false,
+    "selection_precision": 1.0,
+    "selection_recall": 0.6666666666666666,
+    "selection_f1": 0.8,
+    "selection_detail": [
+      {
+        "service": "postgres",
+        "expected": true,
+        "selected": true,
+        "verdict": "true_positive"
+      },
+      {
+        "service": "nginx",
+        "expected": true,
+        "selected": false,
+        "verdict": "false_negative"
+      },
+      {
+        "service": "redis",
+        "expected": false,
+        "selected": false,
+        "verdict": "true_negative"
+      },
+      {
+        "service": "rabbitmq",
+        "expected": true,
+        "selected": true,
+        "verdict": "true_positive"
+      }
+    ],
+    "correctness": 1.0,
+    "parameters_checked": 14,
+    "parameter_details": [
+      {
+        "parameter": "postgres.shared_buffers_range",
+        "comparison": "range",
+        "expected": [
+          "1.2GB",
+          "2.8GB"
+        ],
+        "spec_path": "postgres.memory.shared_buffers",
+        "actual": "2GB",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.effective_cache_size_range",
+        "comparison": "range",
+        "expected": [
+          "3.2GB",
+          "6GB"
+        ],
+        "spec_path": "postgres.memory.effective_cache_size",
+        "actual": "6GB",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.maintenance_work_mem_range",
+        "comparison": "range",
+        "expected": [
+          "256MB",
+          "1GB"
+        ],
+        "spec_path": "postgres.memory.maintenance_work_mem",
+        "actual": "512MB",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.max_connections_range",
+        "comparison": "range",
+        "expected": [
+          50,
+          200
+        ],
+        "spec_path": "postgres.connections.max_connections",
+        "actual": 100,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.ssl",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "postgres.security.ssl",
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.password_encryption",
+        "comparison": "equality",
+        "expected": "scram-sha-256",
+        "spec_path": "postgres.security.password_encryption",
+        "actual": "scram-sha-256",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.wal_level_acceptable",
+        "comparison": "membership",
+        "expected": [
+          "replica",
+          "logical"
+        ],
+        "spec_path": "postgres.wal.wal_level",
+        "actual": "replica",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "nginx.*",
+        "comparison": null,
+        "expected": [
+          "server_tokens",
+          "ssl_protocols_min"
+        ],
+        "spec_path": "nginx",
+        "actual": null,
+        "passed": null,
+        "status": "not_selected"
+      },
+      {
+        "parameter": "rabbitmq.vm_memory_high_watermark_range",
+        "comparison": "range",
+        "expected": [
+          0.3,
+          0.6
+        ],
+        "spec_path": "rabbitmq.resources.vm_memory_high_watermark",
+        "actual": 0.4,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "rabbitmq.disk_free_limit_range",
+        "comparison": "range",
+        "expected": [
+          "500MB",
+          "8GB"
+        ],
+        "spec_path": "rabbitmq.resources.disk_free_limit",
+        "actual": "2GB",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "rabbitmq.heartbeat_range",
+        "comparison": "range",
+        "expected": [
+          10,
+          120
+        ],
+        "spec_path": "rabbitmq.networking.heartbeat",
+        "actual": 60,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "rabbitmq.default_user_not_guest",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "rabbitmq.security.default_user",
+        "actual_raw": "appuser",
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "rabbitmq.default_pass_set",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "rabbitmq.security.default_pass",
+        "actual_raw": "change-me-strong-password",
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "rabbitmq.max_connections_set",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "rabbitmq.networking.max_connections",
+        "actual_raw": 500,
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "rabbitmq.management_listener_ip",
+        "comparison": "equality",
+        "expected": "127.0.0.1",
+        "spec_path": "rabbitmq.management.listener_ip",
+        "actual": "127.0.0.1",
+        "passed": true,
+        "status": "compared"
+      }
+    ]
+  }
+}
