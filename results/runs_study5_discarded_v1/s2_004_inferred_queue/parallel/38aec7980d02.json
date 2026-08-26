@@ -1,0 +1,446 @@
+{
+  "scenario_id": "s2_004_inferred_queue",
+  "scenario_text": "Orders come in through the website all day, but we don't take payment at the\ntime. They pile up and a run goes through them overnight to charge the card\nand book stock, then each customer gets an email the next morning telling them\nwhat happened. The website itself is straightforward \u2014 around 40 people\nordering at once at peak, roughly 20 GB of order history. Each order is\nread once by the overnight run and rarely looked at again. Host is 8 GB RAM,\n4 vCPU, and we need nightly backups.\n",
+  "architecture": "parallel",
+  "model": "gpt-4.1-nano-2025-04-14",
+  "git_commit": "d9823665accdb5aab7e62a16207e01669407d6b1",
+  "git_dirty": true,
+  "run_id": "38aec7980d02",
+  "started_at": "2026-08-26T16:54:27.088697+00:00",
+  "finished_at": "2026-08-26T16:55:29.286554+00:00",
+  "tokens_used": 71308,
+  "per_agent_tokens": {
+    "manager": 1153,
+    "redis": 11914,
+    "nginx": 18647,
+    "postgres": 39594,
+    "merge": 0,
+    "validation": 0,
+    "orchestrator": 0
+  },
+  "wall_clock_s": 61.4147291670015,
+  "max_iterations": 25,
+  "termination_reason": "finalised",
+  "services_deployed": [
+    "postgres",
+    "nginx",
+    "redis"
+  ],
+  "final_spec": {
+    "requirements": {
+      "workload_class": "OLTP",
+      "expected_concurrent_users": 40,
+      "expected_data_size_gb": 20.0,
+      "hardware": {
+        "ram_gb": 8.0,
+        "vcpu": 4,
+        "disk_gb": 20.0
+      },
+      "compliance": "NONE",
+      "backup_required": true,
+      "selected_services": [
+        "nginx",
+        "postgres",
+        "redis"
+      ]
+    },
+    "postgres": {
+      "memory": {
+        "shared_buffers": "2GB",
+        "effective_cache_size": "6GB",
+        "work_mem": "64MB",
+        "maintenance_work_mem": "512MB"
+      },
+      "connections": {
+        "max_connections": 100,
+        "superuser_reserved_connections": 3
+      },
+      "wal": {
+        "wal_level": "replica",
+        "checkpoint_completion_target": 0.9,
+        "max_wal_size": "1GB"
+      },
+      "security": {
+        "ssl": true,
+        "password_encryption": "scram-sha-256",
+        "log_connections": true,
+        "log_disconnections": true,
+        "ssl_min_protocol_version": "TLSv1.2"
+      },
+      "logging": {
+        "log_destination": "stderr",
+        "log_statement": "ddl",
+        "log_min_duration_statement": 1000
+      },
+      "listen_addresses": "*"
+    },
+    "nginx": {
+      "worker": {
+        "worker_processes": "auto",
+        "worker_connections": 1024
+      },
+      "http": {
+        "sendfile": true,
+        "tcp_nopush": true,
+        "tcp_nodelay": true,
+        "keepalive_timeout": 65,
+        "keepalive_requests": 100,
+        "gzip": true
+      },
+      "security": {
+        "server_tokens": false,
+        "autoindex": false,
+        "client_max_body_size": "10m"
+      },
+      "ssl": {
+        "protocols": [
+          "TLSv1.2",
+          "TLSv1.3"
+        ],
+        "ciphers": "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256",
+        "prefer_server_ciphers": true,
+        "session_cache": "shared:SSL:10m",
+        "session_timeout": "1d",
+        "stapling": true
+      }
+    },
+    "redis": {
+      "memory": {
+        "maxmemory": "1.5GB",
+        "maxmemory_policy": "allkeys-lru",
+        "maxmemory_samples": 5
+      },
+      "persistence": {
+        "save": [
+          "3600 1",
+          "300 100"
+        ],
+        "appendonly": true,
+        "appendfsync": "everysec"
+      },
+      "security": {
+        "protected_mode": true,
+        "requirepass": "ChangeMeStrongPassword!",
+        "rename_commands": {
+          "FLUSHALL": "",
+          "CONFIG": "CONFIG_abc123"
+        }
+      },
+      "networking": {
+        "bind": [
+          "127.0.0.1"
+        ],
+        "port": 6379,
+        "tls_port": null
+      }
+    },
+    "rabbitmq": null,
+    "pg_hba": {
+      "rules": [
+        {
+          "type": "local",
+          "database": "all",
+          "user": "all",
+          "address": null,
+          "auth_method": "peer"
+        },
+        {
+          "type": "host",
+          "database": "all",
+          "user": "all",
+          "address": "127.0.0.1/32",
+          "auth_method": "scram-sha-256"
+        },
+        {
+          "type": "hostssl",
+          "database": "all",
+          "user": "all",
+          "address": "0.0.0.0/0",
+          "auth_method": "scram-sha-256"
+        }
+      ]
+    }
+  },
+  "validator_report": {
+    "timestamp": "2026-08-26T16:55:28.934286Z",
+    "smoke_tests": {
+      "postgres": {
+        "did_start": true,
+        "accepts_connections": false,
+        "error_message": "4] LOG:  provided user name (postgres) and authenticated user name (root) do not match\n2026-08-26 16:55:27.402 GMT [74] FATAL:  Peer authentication failed for user \"postgres\"\n2026-08-26 16:55:27.402 GMT [74] DETAIL:  Connection matched file \"/etc/postgresql/pg_hba.conf\" line 3: \"local\tall\tall\tpeer\"\n"
+      },
+      "redis": {
+        "did_start": false,
+        "accepts_connections": false,
+        "error_message": "\n*** FATAL CONFIG FILE ERROR (Redis 7.4.11) ***\nReading the configuration file, at line 8\n>>> 'maxmemory 1.5GB'\nargument must be a memory value\n"
+      },
+      "nginx": {
+        "did_start": false,
+        "accepts_connections": false,
+        "error_message": "fc68bde4992-postgres-1  Started\n Container stack-8fc68bde4992-redis-1  Waiting\n Container stack-8fc68bde4992-postgres-1  Waiting\n Container stack-8fc68bde4992-redis-1  Error\n Container stack-8fc68bde4992-postgres-1  Healthy\ndependency failed to start: container stack-8fc68bde4992-redis-1 exited (1)\n"
+      }
+    },
+    "benchmarks": {},
+    "cis_results": [],
+    "healthchecks": {},
+    "error": "startup failed: docker compose up failed (exit 1):  Network stack_8fc68bde4992_net  Creating\n Network stack_8fc68bde4992_net  Created\n Volume \"stack-8fc68bde4992_pgdata_8fc68bde4992\"  Creating\n Volume \"stack-8fc68bde4992_pgdata_8fc68bde4992\"  Created\n Container stack-8fc68bde4992-redis-1  Creating\n Container stack-8fc68bde4992-postgres-1  Creating\n Container stack-8fc68bde4992-postgres-1  Created\n Container stack-8fc68bde4992-redis-1  Created\n Container stack-8fc68bde4992-nginx-1  Creating\n Container stack-8fc68bde4992-nginx-1  Created\n Container stack-8fc68bde4992-redis-1  Starting\n Container stack-8fc68bde4992-postgres-1  Starting\n Container stack-8fc68bde4992-redis-1  Started\n Container stack-8fc68bde4992-postgres-1  Started\n Container stack-8fc68bde4992-redis-1  Waiting\n Container stack-8fc68bde4992-postgres-1  Waiting\n Container stack-8fc68bde4992-redis-1  Error\n Container stack-8fc68bde4992-postgres-1  Healthy\ndependency failed to start: container stack-8fc68bde4992-redis-1 exited (1)\n"
+  },
+  "history": [
+    {
+      "worker": "manager",
+      "task": "decompose",
+      "success": true,
+      "summary": "The request describes a website for orders with an overnight batch process for charging, stock booking, and customer notification. The website itself is straightforward, requiring a web server (nginx). The order history is around 20 GB, which fits well with a relational database like postgres for storing detailed order data, and a cache like redis for fast access to recent order state. They need nightly backups. They do not specify a high concurrency for online users, but mention peaks of 40 con",
+      "tokens_used": 1153,
+      "selected_services": [
+        "nginx",
+        "postgres",
+        "redis"
+      ]
+    },
+    {
+      "worker": "redis",
+      "task": "configure redis",
+      "success": true,
+      "summary": "redis: generate_config succeeded; produced a fragment.",
+      "tokens_used": 11914,
+      "iterations_used": 1,
+      "wall_clock_s": 16.771,
+      "tool_calls": [
+        {
+          "name": "generate_config",
+          "success": true
+        }
+      ],
+      "error": ""
+    },
+    {
+      "worker": "nginx",
+      "task": "configure nginx",
+      "success": true,
+      "summary": "nginx: generate_config succeeded; produced a fragment.",
+      "tokens_used": 18647,
+      "iterations_used": 1,
+      "wall_clock_s": 24.356,
+      "tool_calls": [
+        {
+          "name": "generate_config",
+          "success": true
+        }
+      ],
+      "error": ""
+    },
+    {
+      "worker": "postgres",
+      "task": "configure postgres",
+      "success": true,
+      "summary": "postgres: generate_config succeeded; produced a fragment.",
+      "tokens_used": 39594,
+      "iterations_used": 1,
+      "wall_clock_s": 50.653,
+      "tool_calls": [
+        {
+          "name": "generate_config",
+          "success": true
+        }
+      ],
+      "error": ""
+    },
+    {
+      "worker": "merge",
+      "task": "combine fragments and arbitrate shared memory",
+      "success": true,
+      "summary": "Merged 3 fragments (nginx, postgres, redis). Reservations totalled 3.50GB against a 5.60GB ceiling; no arbitration.",
+      "tokens_used": 0,
+      "arbitration": {
+        "host_ram_bytes": 8589934592,
+        "ceiling_bytes": 6012954214,
+        "requested_bytes": 3758096384,
+        "granted_bytes": 3758096384,
+        "requested_fraction_of_ram": 0.4375,
+        "scale_factor": 1.0,
+        "arbitrated": false,
+        "per_service": {
+          "postgres": {
+            "requested_bytes": 2147483648,
+            "granted_bytes": 2147483648
+          },
+          "redis": {
+            "requested_bytes": 1610612736,
+            "granted_bytes": 1610612736
+          }
+        },
+        "notes": [
+          "no arbitration needed: 3758096384 bytes requested within ceiling of 6012954214"
+        ]
+      },
+      "concurrency": {
+        "fan_out_wall_clock_s": 50.656,
+        "sum_agent_wall_clock_s": 91.78,
+        "agents": 3
+      }
+    },
+    {
+      "worker": "validation",
+      "task": "deploy and test the merged spec",
+      "success": true,
+      "tokens_used": 0,
+      "summary": "validation failed: startup failed: docker compose up failed (exit 1):  Network stack_8fc68bde4992_net  Creating\n Network stack_8fc68bde4992_net  Created\n Volume \"stack-8fc68bde4992_pgdata_8fc68bde4992\"  Creating\n Volume \"stack-8fc68bde4992_pgdata_8fc68bde4992\"  Created\n Container stack-8fc68bde4992-redis-1  Creating\n Container stack-8fc68bde4992-postgres-1  Creating\n Container stack-8fc68bde4992-postgres-1  Created\n Container stack-8fc68bde4992-redis-1  Created\n Container stack-8fc68bde4992-nginx-1  Creating\n Container stack-8fc68bde4992-nginx-1  Created\n Container stack-8fc68bde4992-redis-1  Starting\n Container stack-8fc68bde4992-postgres-1  Starting\n Container stack-8fc68bde4992-redis-1  Started\n Container stack-8fc68bde4992-postgres-1  Started\n Container stack-8fc68bde4992-redis-1  Waiting\n Container stack-8fc68bde4992-postgres-1  Waiting\n Container stack-8fc68bde4992-redis-1  Error\n Container stack-8fc68bde4992-postgres-1  Healthy\ndependency failed to start: container stack-8fc68bde4992-redis-1 exited (1)\n"
+    }
+  ],
+  "scores": {
+    "completed": true,
+    "smoke_pass_rate": 0.0,
+    "selection_exact_match": false,
+    "selection_precision": 0.6666666666666666,
+    "selection_recall": 0.6666666666666666,
+    "selection_f1": 0.6666666666666666,
+    "selection_detail": [
+      {
+        "service": "postgres",
+        "expected": true,
+        "selected": true,
+        "verdict": "true_positive"
+      },
+      {
+        "service": "nginx",
+        "expected": true,
+        "selected": true,
+        "verdict": "true_positive"
+      },
+      {
+        "service": "redis",
+        "expected": false,
+        "selected": true,
+        "verdict": "false_positive"
+      },
+      {
+        "service": "rabbitmq",
+        "expected": true,
+        "selected": false,
+        "verdict": "false_negative"
+      }
+    ],
+    "correctness": 1.0,
+    "parameters_checked": 9,
+    "parameter_details": [
+      {
+        "parameter": "postgres.shared_buffers_range",
+        "comparison": "range",
+        "expected": [
+          "1.2GB",
+          "2.8GB"
+        ],
+        "spec_path": "postgres.memory.shared_buffers",
+        "actual": "2GB",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.effective_cache_size_range",
+        "comparison": "range",
+        "expected": [
+          "3.2GB",
+          "6GB"
+        ],
+        "spec_path": "postgres.memory.effective_cache_size",
+        "actual": "6GB",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.maintenance_work_mem_range",
+        "comparison": "range",
+        "expected": [
+          "256MB",
+          "1GB"
+        ],
+        "spec_path": "postgres.memory.maintenance_work_mem",
+        "actual": "512MB",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.max_connections_range",
+        "comparison": "range",
+        "expected": [
+          50,
+          200
+        ],
+        "spec_path": "postgres.connections.max_connections",
+        "actual": 100,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.ssl",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "postgres.security.ssl",
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.password_encryption",
+        "comparison": "equality",
+        "expected": "scram-sha-256",
+        "spec_path": "postgres.security.password_encryption",
+        "actual": "scram-sha-256",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.wal_level_acceptable",
+        "comparison": "membership",
+        "expected": [
+          "replica",
+          "logical"
+        ],
+        "spec_path": "postgres.wal.wal_level",
+        "actual": "replica",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "nginx.server_tokens",
+        "comparison": "equality",
+        "expected": false,
+        "spec_path": "nginx.security.server_tokens",
+        "actual": false,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "nginx.ssl_protocols_min",
+        "comparison": "equality",
+        "expected": "TLSv1.2",
+        "spec_path": "nginx.ssl.protocols",
+        "actual_raw": [
+          "TLSv1.2",
+          "TLSv1.3"
+        ],
+        "actual": "TLSv1.2",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "rabbitmq.*",
+        "comparison": null,
+        "expected": [
+          "default_pass_set",
+          "default_user_not_guest",
+          "disk_free_limit_range",
+          "heartbeat_range",
+          "management_listener_ip",
+          "max_connections_set",
+          "vm_memory_high_watermark_range"
+        ],
+        "spec_path": "rabbitmq",
+        "actual": null,
+        "passed": null,
+        "status": "not_selected"
+      }
+    ]
+  }
+}

@@ -223,7 +223,7 @@ def _run_parallel(
             client,
             budget,
             max_iterations=max_iterations,
-            max_service_iterations=4,
+            max_service_iterations=5,
         )
 
         agent_result = agent.run(scenario["request"])

@@ -38,7 +38,9 @@ logger = structlog.get_logger(__name__)
 #: architecture's config worker holds, so tool access is not a confound.
 _SERVICE_AGENT_TOOLS = ("query_rag", "generate_config")
 
-_DEFAULT_MAX_SERVICE_ITERATIONS = 4
+#: Matches ``multi_agent.worker._DEFAULT_MAX_WORKER_ITERATIONS`` exactly, so
+#: neither arm gets more attempts per agent than the other.
+_DEFAULT_MAX_SERVICE_ITERATIONS = 5
 
 #: postgres carries pg_hba with it — StackSpec rejects one without the other,
 #: so the postgres agent owns both.

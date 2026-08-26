@@ -15,6 +15,23 @@ Verify with `shasum -a 256 docs/planning/study5-prereg.md`.
 
 Registered at source commit `bc69d10` (Study 4 complete, working tree clean).
 
+## Amendment 1 — retry parity (2026-08-26)
+
+The first collection was **stopped after 34 runs and discarded** on discovering
+that the parallel arm had less retry resilience than the star arm it is
+compared against: its agents got one instance with accumulating history, while
+the star arm's orchestrator re-delegates to a freshly constructed worker. All
+14 postgres successes came within 3 iterations; all 5 failures burned 4 and
+recovered nothing. Service agents now get 3 attempts with a fresh agent each,
+and costs are summed across attempts.
+
+No prediction was revised. The discarded runs are archived, unanalysed, at
+`results/runs_study5_discarded_v1/`.
+
+```
+3c419e0fb424d6bd405ee1c707676f038ddffcaed70bac788f6b7afe9aa0ab6b  docs/planning/study5-amendment-1.md
+```
+
 ## Summary of what was registered
 
 Study 5 is an **exploratory** third architecture: a manager decomposes the

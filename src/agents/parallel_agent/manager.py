@@ -47,6 +47,24 @@ logger = structlog.get_logger(__name__)
 #: never truncates the fan-out; it exists to bound thread creation.
 _MAX_WORKERS = 4
 
+#: Attempts per service, each with a **fresh** agent instance.
+#:
+#: Retry parity with the star arm, not a tuning knob. There, a config worker
+#: gets 5 iterations and the orchestrator may re-delegate across its own loop,
+#: each delegation constructing a worker with empty history. That history reset
+#: is what matters: constrained-decoding failures against the StackSpec schema
+#: are strongly correlated *within* an agent, because every retry sees its own
+#: failed attempts and reproduces them.
+#:
+#: The first Study 5 collection made this visible. Of 19 postgres agents, all
+#: 14 successes came within 3 iterations and all 5 failures exhausted 4 without
+#: recovering — the agent was looping on its own bad output. Retrying inside
+#: one agent does not help; a clean instance does. Without this the parallel
+#: arm was strictly less resilient than the star arm it is compared against,
+#: which would have understated it for a reason that has nothing to do with
+#: topology.
+_SERVICE_ATTEMPTS = 3
+
 
 def _catalogue() -> frozenset[str]:
     from src.services.catalog import names
@@ -245,13 +263,8 @@ class ParallelManagerAgent:
         ) as pool:
             futures = {
                 pool.submit(
-                    ServiceAgent(
-                        service=service,
-                        llm_client=self._client,
-                        budget=self._budget,
-                        max_iterations=self._max_service_iterations,
-                        full_registry=self._registry,
-                    ).run,
+                    self._run_one_service,
+                    service,
                     request,
                     requirements,
                     decision.per_service_notes.get(service, ""),
@@ -294,6 +307,50 @@ class ParallelManagerAgent:
                 )
 
         return fragments, time.monotonic() - fan_out_start
+
+    def _run_one_service(
+        self, service: str, request: str, requirements: dict[str, Any], note: str
+    ) -> ServiceFragmentResult:
+        """Run one service to a fragment, retrying with a fresh agent.
+
+        Runs on a pool thread, so the retries of one service still overlap the
+        other services' work and the fan-out stays concurrent. Costs are
+        accumulated across attempts, because every attempt spent real tokens
+        from the shared budget and the arm should be charged for all of them.
+        """
+        attempts: list[ServiceFragmentResult] = []
+        for attempt in range(1, _SERVICE_ATTEMPTS + 1):
+            outcome = ServiceAgent(
+                service=service,
+                llm_client=self._client,
+                budget=self._shared_budget,
+                max_iterations=self._max_service_iterations,
+                full_registry=self._registry,
+            ).run(request, requirements, note)
+            attempts.append(outcome)
+            if outcome.fragment:
+                break
+            if attempt < _SERVICE_ATTEMPTS:
+                logger.info(
+                    "service_agent_retry",
+                    service=service,
+                    attempt=attempt,
+                    reason=outcome.error or "no fragment produced",
+                )
+
+        final = attempts[-1]
+        if len(attempts) > 1:
+            final = final.model_copy(
+                update={
+                    "tokens_used": sum(a.tokens_used for a in attempts),
+                    "iterations_used": sum(a.iterations_used for a in attempts),
+                    "wall_clock_s": sum(a.wall_clock_s for a in attempts),
+                    "summary": (
+                        f"[{len(attempts)} attempts] " + final.summary
+                    ),
+                }
+            )
+        return final
 
     def _merge(
         self,

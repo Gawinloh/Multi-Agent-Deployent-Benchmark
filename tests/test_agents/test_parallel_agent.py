@@ -301,6 +301,104 @@ def test_postgres_fragment_without_pg_hba_is_rejected():
     assert set(ServiceAgent._extract_fragment(agent, full)) == {"postgres", "pg_hba"}
 
 
+def test_failed_service_is_retried_with_a_fresh_agent():
+    """Regression: retry parity with the star arm.
+
+    In the first Study 5 collection every postgres success arrived within 3
+    iterations and every failure burned all 4 without recovering — the agent
+    was looping on its own failed output, because retries inside one agent see
+    that output in their history. The star arm escapes this by re-delegating,
+    which builds a worker with empty history. The manager must do the same, and
+    must charge the arm for every attempt.
+    """
+    from src.agents.parallel_agent import manager as manager_mod
+    from src.agents.parallel_agent.schemas import ServiceFragmentResult
+
+    constructed: list[int] = []
+
+    class FlakyAgent:
+        def __init__(self, service, llm_client, budget, max_iterations, full_registry):
+            self._service = service
+            constructed.append(1)
+
+        def run(self, request, requirements, note):
+            # Fails twice, succeeds on a third, fresh instance.
+            attempt = len(constructed)
+            return ServiceFragmentResult(
+                service=self._service,
+                success=attempt >= 3,
+                summary=f"attempt {attempt}",
+                iterations_used=5,
+                tokens_used=100,
+                wall_clock_s=1.0,
+                fragment={self._service: {"ok": True}} if attempt >= 3 else {},
+            )
+
+    mgr = manager_mod.ParallelManagerAgent.__new__(manager_mod.ParallelManagerAgent)
+    mgr._client = None  # noqa: SLF001
+    mgr._shared_budget = TokenBudget(1_000_000)  # noqa: SLF001
+    mgr._max_service_iterations = 5  # noqa: SLF001
+    mgr._registry = None  # noqa: SLF001
+
+    original = manager_mod.ServiceAgent
+    manager_mod.ServiceAgent = FlakyAgent
+    try:
+        out = mgr._run_one_service("redis", "req", {}, "")  # noqa: SLF001
+    finally:
+        manager_mod.ServiceAgent = original
+
+    assert out.fragment == {"redis": {"ok": True}}
+    assert len(constructed) == 3, "a fresh agent per attempt"
+    # Every attempt spent real tokens; the arm is charged for all of them.
+    assert out.tokens_used == 300
+    assert out.iterations_used == 15
+    assert out.summary.startswith("[3 attempts]")
+
+
+def test_service_retries_are_bounded():
+    """A service that never succeeds must not retry forever."""
+    from src.agents.parallel_agent import manager as manager_mod
+    from src.agents.parallel_agent.schemas import ServiceFragmentResult
+
+    calls: list[int] = []
+
+    class AlwaysFails:
+        def __init__(self, service, llm_client, budget, max_iterations, full_registry):
+            self._service = service
+
+        def run(self, request, requirements, note):
+            calls.append(1)
+            return ServiceFragmentResult(
+                service=self._service, success=False, tokens_used=10, fragment={}
+            )
+
+    mgr = manager_mod.ParallelManagerAgent.__new__(manager_mod.ParallelManagerAgent)
+    mgr._client = None  # noqa: SLF001
+    mgr._shared_budget = TokenBudget(1_000_000)  # noqa: SLF001
+    mgr._max_service_iterations = 5  # noqa: SLF001
+    mgr._registry = None  # noqa: SLF001
+
+    original = manager_mod.ServiceAgent
+    manager_mod.ServiceAgent = AlwaysFails
+    try:
+        out = mgr._run_one_service("postgres", "req", {}, "")  # noqa: SLF001
+    finally:
+        manager_mod.ServiceAgent = original
+
+    assert len(calls) == manager_mod._SERVICE_ATTEMPTS
+    assert out.fragment == {}
+
+
+def test_parallel_service_iterations_match_the_star_worker():
+    """Neither arm may get more attempts per agent than the other."""
+    from src.agents.multi_agent.worker import _DEFAULT_MAX_WORKER_ITERATIONS
+    from src.agents.parallel_agent.service_agent import (
+        _DEFAULT_MAX_SERVICE_ITERATIONS,
+    )
+
+    assert _DEFAULT_MAX_SERVICE_ITERATIONS == _DEFAULT_MAX_WORKER_ITERATIONS
+
+
 def test_fan_out_is_actually_concurrent():
     """If the agents run in sequence the arm has no reason to exist.
 
