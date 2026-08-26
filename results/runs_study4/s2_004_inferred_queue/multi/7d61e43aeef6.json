@@ -1,0 +1,1286 @@
+{
+  "scenario_id": "s2_004_inferred_queue",
+  "scenario_text": "Orders come in through the website all day, but we don't take payment at the\ntime. They pile up and a run goes through them overnight to charge the card\nand book stock, then each customer gets an email the next morning telling them\nwhat happened. The website itself is straightforward \u2014 around 40 people\nordering at once at peak, roughly 20 GB of order history. Each order is\nread once by the overnight run and rarely looked at again. Host is 8 GB RAM,\n4 vCPU, and we need nightly backups.\n",
+  "architecture": "multi",
+  "model": "gpt-4.1-nano-2025-04-14",
+  "git_commit": "e949b50569da26f7f5f913212271fde6515d1c3f",
+  "git_dirty": true,
+  "run_id": "7d61e43aeef6",
+  "started_at": "2026-08-25T19:41:15.084538+00:00",
+  "finished_at": "2026-08-25T19:45:49.659606+00:00",
+  "tokens_used": 106060,
+  "per_agent_tokens": {
+    "config": 78156,
+    "validation": 2255,
+    "security": 6272,
+    "orchestrator": 19377
+  },
+  "wall_clock_s": 274.47434733299997,
+  "max_iterations": 25,
+  "termination_reason": "finalised",
+  "services_deployed": [
+    "postgres",
+    "redis"
+  ],
+  "final_spec": {
+    "requirements": {
+      "workload_class": "BALANCED",
+      "expected_concurrent_users": 50,
+      "expected_data_size_gb": 10.0,
+      "hardware": {
+        "ram_gb": 16.0,
+        "vcpu": 4,
+        "disk_gb": 100.0
+      },
+      "compliance": "NONE",
+      "backup_required": false,
+      "selected_services": [
+        "postgres",
+        "redis"
+      ]
+    },
+    "postgres": {
+      "memory": {
+        "shared_buffers": "4GB",
+        "effective_cache_size": "12GB",
+        "work_mem": "64MB",
+        "maintenance_work_mem": "512MB"
+      },
+      "connections": {
+        "max_connections": 200,
+        "superuser_reserved_connections": 3
+      },
+      "wal": {
+        "wal_level": "replica",
+        "checkpoint_completion_target": 0.9,
+        "max_wal_size": "1GB"
+      },
+      "security": {
+        "ssl": true,
+        "password_encryption": "scram-sha-256",
+        "log_connections": true,
+        "log_disconnections": true,
+        "ssl_min_protocol_version": "TLSv1.2"
+      },
+      "logging": {
+        "log_destination": "stderr",
+        "log_statement": "ddl",
+        "log_min_duration_statement": 1000
+      },
+      "listen_addresses": "127.0.0.1"
+    },
+    "nginx": null,
+    "redis": {
+      "memory": {
+        "maxmemory": "1GB",
+        "maxmemory_policy": "allkeys-lru",
+        "maxmemory_samples": 5
+      },
+      "persistence": {
+        "save": [
+          "3600 1",
+          "300 100"
+        ],
+        "appendonly": true,
+        "appendfsync": "everysec"
+      },
+      "security": {
+        "protected_mode": true,
+        "requirepass": "ChangeMeStrongPassword",
+        "rename_commands": {}
+      },
+      "networking": {
+        "bind": [
+          "127.0.0.1"
+        ],
+        "port": 6379,
+        "tls_port": null
+      }
+    },
+    "rabbitmq": null,
+    "pg_hba": {
+      "rules": [
+        {
+          "type": "local",
+          "database": "all",
+          "user": "all",
+          "address": null,
+          "auth_method": "peer"
+        },
+        {
+          "type": "host",
+          "database": "all",
+          "user": "all",
+          "address": "127.0.0.1/32",
+          "auth_method": "scram-sha-256"
+        },
+        {
+          "type": "hostssl",
+          "database": "all",
+          "user": "all",
+          "address": "0.0.0.0/0",
+          "auth_method": "scram-sha-256"
+        }
+      ]
+    }
+  },
+  "validator_report": {
+    "timestamp": "2026-08-25T19:45:46.580833Z",
+    "smoke_tests": {
+      "postgres": {
+        "did_start": true,
+        "accepts_connections": true,
+        "error_message": null
+      },
+      "redis": {
+        "did_start": true,
+        "accepts_connections": true,
+        "error_message": null
+      }
+    },
+    "benchmarks": {
+      "postgres": {
+        "throughput": 3342.692579,
+        "latency_p50": 1.197,
+        "latency_p90": null,
+        "latency_p99": null,
+        "error_message": null
+      },
+      "redis": {
+        "throughput": 167929.29499999998,
+        "latency_p50": 0.031,
+        "latency_p90": null,
+        "latency_p99": null,
+        "error_message": null
+      }
+    },
+    "cis_results": [
+      {
+        "control_id": "1.1",
+        "name": "pg_hba host rules use scram-sha-256 (md5 absent)",
+        "level": 1,
+        "passed": true,
+        "evidence": "# pg_hba.conf - generated, do not edit by hand\n# TYPE\tDATABASE\tUSER\tADDRESS\tMETHOD\nlocal\tall\tall\tpeer\nhost\tall\tall\t127.0.0.1/32\tscram-sha-256\nhostssl\tall\tall\t0.0.0.0/0\tscram-sha-256\n",
+        "service": "postgres"
+      },
+      {
+        "control_id": "1.2",
+        "name": "password_encryption is scram-sha-256",
+        "level": 1,
+        "passed": true,
+        "evidence": "password_encryption = scram-sha-256",
+        "service": "postgres"
+      },
+      {
+        "control_id": "2.1",
+        "name": "log_destination set",
+        "level": 1,
+        "passed": true,
+        "evidence": "log_destination = stderr",
+        "service": "postgres"
+      },
+      {
+        "control_id": "2.2",
+        "name": "log_statement at least ddl",
+        "level": 1,
+        "passed": true,
+        "evidence": "log_statement = ddl",
+        "service": "postgres"
+      },
+      {
+        "control_id": "2.3",
+        "name": "log_connections on",
+        "level": 1,
+        "passed": true,
+        "evidence": "log_connections = on",
+        "service": "postgres"
+      },
+      {
+        "control_id": "2.4",
+        "name": "log_disconnections on",
+        "level": 1,
+        "passed": true,
+        "evidence": "log_disconnections = on",
+        "service": "postgres"
+      },
+      {
+        "control_id": "2.5",
+        "name": "pgAudit extension enabled",
+        "level": 1,
+        "passed": false,
+        "evidence": "extensions: plpgsql",
+        "service": "postgres"
+      },
+      {
+        "control_id": "3.1",
+        "name": "listen_addresses not '*'",
+        "level": 1,
+        "passed": true,
+        "evidence": "listen_addresses = 127.0.0.1",
+        "service": "postgres"
+      },
+      {
+        "control_id": "3.2",
+        "name": "ssl on",
+        "level": 1,
+        "passed": true,
+        "evidence": "ssl = on",
+        "service": "postgres"
+      },
+      {
+        "control_id": "3.3",
+        "name": "ssl_min_protocol_version >= TLSv1.2",
+        "level": 1,
+        "passed": true,
+        "evidence": "ssl_min_protocol_version = TLSv1.2",
+        "service": "postgres"
+      },
+      {
+        "control_id": "4.1",
+        "name": "postgres owns no application databases",
+        "level": 1,
+        "passed": true,
+        "evidence": "postgres-owned app databases: none",
+        "service": "postgres"
+      },
+      {
+        "control_id": "4.2",
+        "name": "no superuser roles besides postgres",
+        "level": 1,
+        "passed": true,
+        "evidence": "extra superusers: none",
+        "service": "postgres"
+      },
+      {
+        "control_id": "5.1",
+        "name": "log_min_duration_statement > 0",
+        "level": 1,
+        "passed": true,
+        "evidence": "log_min_duration_statement = 1s",
+        "service": "postgres"
+      },
+      {
+        "control_id": "5.2",
+        "name": "statement_timeout set",
+        "level": 1,
+        "passed": false,
+        "evidence": "statement_timeout = 0",
+        "service": "postgres"
+      },
+      {
+        "control_id": "1.1",
+        "name": "protected-mode on",
+        "level": 1,
+        "passed": true,
+        "evidence": "protected-mode yes",
+        "service": "redis"
+      },
+      {
+        "control_id": "1.2",
+        "name": "not bound to 0.0.0.0",
+        "level": 1,
+        "passed": true,
+        "evidence": "bind 127.0.0.1",
+        "service": "redis"
+      },
+      {
+        "control_id": "2.1",
+        "name": "requirepass or ACLs configured",
+        "level": 1,
+        "passed": true,
+        "evidence": "requirepass set",
+        "service": "redis"
+      },
+      {
+        "control_id": "2.2",
+        "name": "authentication enforced at runtime",
+        "level": 1,
+        "passed": true,
+        "evidence": "unauthenticated ping -> NOAUTH Authentication required.",
+        "service": "redis"
+      },
+      {
+        "control_id": "3.1",
+        "name": "dangerous commands renamed or disabled",
+        "level": 1,
+        "passed": false,
+        "evidence": "not renamed: FLUSHALL, FLUSHDB, CONFIG, EVAL, DEBUG, SHUTDOWN",
+        "service": "redis"
+      },
+      {
+        "control_id": "4.1",
+        "name": "durability configured (AOF or RDB)",
+        "level": 1,
+        "passed": true,
+        "evidence": "appendonly yes; save present",
+        "service": "redis"
+      },
+      {
+        "control_id": "4.2",
+        "name": "maxmemory set (non-zero)",
+        "level": 1,
+        "passed": true,
+        "evidence": "maxmemory 1GB",
+        "service": "redis"
+      },
+      {
+        "control_id": "4.3",
+        "name": "maxmemory-policy not noeviction",
+        "level": 1,
+        "passed": true,
+        "evidence": "maxmemory-policy allkeys-lru",
+        "service": "redis"
+      }
+    ],
+    "healthchecks": {
+      "postgres": {
+        "healthcheck_present": true,
+        "healthcheck_condition": null
+      },
+      "redis": {
+        "healthcheck_present": true,
+        "healthcheck_condition": null
+      }
+    },
+    "error": null
+  },
+  "history": [
+    {
+      "worker": "config",
+      "task": "Generate a Docker Stack configuration for an nginx + PostgreSQL + Redis setup oriented towards a web backend with nightly batch processing. The database should be 20 GB, host with 8 GB RAM and 4 vCPUs, incorporate nightly backups, and ensure the setup is suitable for peak of 40 users with low read frequency on order history.",
+      "success": true,
+      "summary": "generate_config failed: openai: output failed schema validation after 3 retries: <failed_attempts>\n\n<generation number=\"1\">\n Generated a StackSpec configuration.",
+      "tokens_used": 19641,
+      "iterations_used": 2,
+      "artifacts": {
+        "last_spec": "<spec>"
+      }
+    },
+    {
+      "worker": "validation",
+      "task": "Deploy the last generated StackSpec configuration into Docker, run smoke tests and performance validation to ensure it meets the workload requirements and functions correctly.\n\nThe StackSpec to validate has been provided via context (auto-injected).",
+      "success": true,
+      "summary": "Validation: 3/3 smoke tests passed, 24/32 CIS checks passed.",
+      "tokens_used": 728,
+      "iterations_used": 1,
+      "artifacts": {
+        "validator_report": {
+          "timestamp": "2026-08-25T19:43:20.545416Z",
+          "smoke_tests": {
+            "postgres": {
+              "did_start": true,
+              "accepts_connections": true,
+              "error_message": null
+            },
+            "nginx": {
+              "did_start": true,
+              "accepts_connections": true,
+              "error_message": null
+            },
+            "redis": {
+              "did_start": true,
+              "accepts_connections": true,
+              "error_message": null
+            }
+          },
+          "benchmarks": {
+            "postgres": {
+              "throughput": 3308.621968,
+              "latency_p50": 1.209,
+              "latency_p90": null,
+              "latency_p99": null,
+              "error_message": null
+            },
+            "nginx": {
+              "throughput": null,
+              "latency_p50": null,
+              "latency_p90": null,
+              "latency_p99": null,
+              "error_message": "skipped: williamyeh/wrk image is amd64-only; no native ARM64 build available (Apple Silicon limitation)"
+            },
+            "redis": {
+              "throughput": 159512.08500000002,
+              "latency_p50": 0.031,
+              "latency_p90": null,
+              "latency_p99": null,
+              "error_message": null
+            }
+          },
+          "cis_results": [
+            {
+              "control_id": "1.1",
+              "name": "pg_hba host rules use scram-sha-256 (md5 absent)",
+              "level": 1,
+              "passed": true,
+              "evidence": "# pg_hba.conf - generated, do not edit by hand\n# TYPE\tDATABASE\tUSER\tADDRESS\tMETHOD\nlocal\tall\tall\tpeer\nhost\tall\tall\t127.0.0.1/32\tscram-sha-256\nhostssl\tall\tall\t0.0.0.0/0\tscram-sha-256\n",
+              "service": "postgres"
+            },
+            {
+              "control_id": "1.2",
+              "name": "password_encryption is scram-sha-256",
+              "level": 1,
+              "passed": true,
+              "evidence": "password_encryption = scram-sha-256",
+              "service": "postgres"
+            },
+            {
+              "control_id": "2.1",
+              "name": "log_destination set",
+              "level": 1,
+              "passed": true,
+              "evidence": "log_destination = stderr",
+              "service": "postgres"
+            },
+            {
+              "control_id": "2.2",
+              "name": "log_statement at least ddl",
+              "level": 1,
+              "passed": true,
+              "evidence": "log_statement = ddl",
+              "service": "postgres"
+            },
+            {
+              "control_id": "2.3",
+              "name": "log_connections on",
+              "level": 1,
+              "passed": true,
+              "evidence": "log_connections = on",
+              "service": "postgres"
+            },
+            {
+              "control_id": "2.4",
+              "name": "log_disconnections on",
+              "level": 1,
+              "passed": true,
+              "evidence": "log_disconnections = on",
+              "service": "postgres"
+            },
+            {
+              "control_id": "2.5",
+              "name": "pgAudit extension enabled",
+              "level": 1,
+              "passed": false,
+              "evidence": "extensions: plpgsql",
+              "service": "postgres"
+            },
+            {
+              "control_id": "3.1",
+              "name": "listen_addresses not '*'",
+              "level": 1,
+              "passed": false,
+              "evidence": "listen_addresses = *",
+              "service": "postgres"
+            },
+            {
+              "control_id": "3.2",
+              "name": "ssl on",
+              "level": 1,
+              "passed": true,
+              "evidence": "ssl = on",
+              "service": "postgres"
+            },
+            {
+              "control_id": "3.3",
+              "name": "ssl_min_protocol_version >= TLSv1.2",
+              "level": 1,
+              "passed": true,
+              "evidence": "ssl_min_protocol_version = TLSv1.2",
+              "service": "postgres"
+            },
+            {
+              "control_id": "4.1",
+              "name": "postgres owns no application databases",
+              "level": 1,
+              "passed": true,
+              "evidence": "postgres-owned app databases: none",
+              "service": "postgres"
+            },
+            {
+              "control_id": "4.2",
+              "name": "no superuser roles besides postgres",
+              "level": 1,
+              "passed": true,
+              "evidence": "extra superusers: none",
+              "service": "postgres"
+            },
+            {
+              "control_id": "5.1",
+              "name": "log_min_duration_statement > 0",
+              "level": 1,
+              "passed": true,
+              "evidence": "log_min_duration_statement = 1s",
+              "service": "postgres"
+            },
+            {
+              "control_id": "5.2",
+              "name": "statement_timeout set",
+              "level": 1,
+              "passed": false,
+              "evidence": "statement_timeout = 0",
+              "service": "postgres"
+            },
+            {
+              "control_id": "2.5.1",
+              "name": "server_tokens off (no version in Server header)",
+              "level": 1,
+              "passed": true,
+              "evidence": "Server: nginx",
+              "service": "nginx"
+            },
+            {
+              "control_id": "2.5.2",
+              "name": "autoindex off",
+              "level": 1,
+              "passed": true,
+              "evidence": "no 'autoindex on' found",
+              "service": "nginx"
+            },
+            {
+              "control_id": "4.1.1",
+              "name": "ssl_protocols restricted to TLSv1.2/1.3",
+              "level": 1,
+              "passed": true,
+              "evidence": "ssl_protocols TLSv1.2 TLSv1.3",
+              "service": "nginx"
+            },
+            {
+              "control_id": "4.1.2",
+              "name": "ssl_prefer_server_ciphers on",
+              "level": 1,
+              "passed": true,
+              "evidence": "ssl_prefer_server_ciphers on;",
+              "service": "nginx"
+            },
+            {
+              "control_id": "5.3.1",
+              "name": "X-Frame-Options header configured",
+              "level": 1,
+              "passed": false,
+              "evidence": "X-Frame-Options not configured",
+              "service": "nginx"
+            },
+            {
+              "control_id": "5.3.2",
+              "name": "X-Content-Type-Options header configured",
+              "level": 1,
+              "passed": false,
+              "evidence": "X-Content-Type-Options not configured",
+              "service": "nginx"
+            },
+            {
+              "control_id": "5.3.3",
+              "name": "Strict-Transport-Security header configured",
+              "level": 1,
+              "passed": false,
+              "evidence": "Strict-Transport-Security not configured",
+              "service": "nginx"
+            },
+            {
+              "control_id": "4.1.3",
+              "name": "HTTP to HTTPS 301 redirect present",
+              "level": 1,
+              "passed": false,
+              "evidence": "no 'return 301 https://...' found",
+              "service": "nginx"
+            },
+            {
+              "control_id": "2.4.1",
+              "name": "client_max_body_size set explicitly",
+              "level": 1,
+              "passed": true,
+              "evidence": "client_max_body_size 10m;",
+              "service": "nginx"
+            },
+            {
+              "control_id": "3.1",
+              "name": "access_log enabled",
+              "level": 1,
+              "passed": true,
+              "evidence": "access_log /var/log/nginx/access.log;",
+              "service": "nginx"
+            },
+            {
+              "control_id": "1.1",
+              "name": "protected-mode on",
+              "level": 1,
+              "passed": true,
+              "evidence": "protected-mode yes",
+              "service": "redis"
+            },
+            {
+              "control_id": "1.2",
+              "name": "not bound to 0.0.0.0",
+              "level": 1,
+              "passed": true,
+              "evidence": "bind 127.0.0.1",
+              "service": "redis"
+            },
+            {
+              "control_id": "2.1",
+              "name": "requirepass or ACLs configured",
+              "level": 1,
+              "passed": true,
+              "evidence": "requirepass set",
+              "service": "redis"
+            },
+            {
+              "control_id": "2.2",
+              "name": "authentication enforced at runtime",
+              "level": 1,
+              "passed": true,
+              "evidence": "unauthenticated ping -> NOAUTH Authentication required.",
+              "service": "redis"
+            },
+            {
+              "control_id": "3.1",
+              "name": "dangerous commands renamed or disabled",
+              "level": 1,
+              "passed": false,
+              "evidence": "not renamed: FLUSHDB, EVAL, DEBUG, SHUTDOWN",
+              "service": "redis"
+            },
+            {
+              "control_id": "4.1",
+              "name": "durability configured (AOF or RDB)",
+              "level": 1,
+              "passed": true,
+              "evidence": "appendonly yes; save present",
+              "service": "redis"
+            },
+            {
+              "control_id": "4.2",
+              "name": "maxmemory set (non-zero)",
+              "level": 1,
+              "passed": true,
+              "evidence": "maxmemory 512MB",
+              "service": "redis"
+            },
+            {
+              "control_id": "4.3",
+              "name": "maxmemory-policy not noeviction",
+              "level": 1,
+              "passed": true,
+              "evidence": "maxmemory-policy allkeys-lru",
+              "service": "redis"
+            }
+          ],
+          "healthchecks": {
+            "postgres": {
+              "healthcheck_present": true,
+              "healthcheck_condition": "service_healthy"
+            },
+            "redis": {
+              "healthcheck_present": true,
+              "healthcheck_condition": "service_healthy"
+            },
+            "nginx": {
+              "healthcheck_present": true,
+              "healthcheck_condition": null
+            }
+          },
+          "error": null
+        }
+      }
+    },
+    {
+      "worker": "security",
+      "task": "Review the current Docker Stack configuration for nginx + PostgreSQL + Redis, which is set up for nightly backups, 20 GB database, and a workload of up to 40 users. Assess CIS benchmarks compliance and security hardening recommendations, providing specific advice on how to improve security and CIS compliance.\n\nCIS failures to address: ?: ; ?: ; ?: ; ?: ; ?: ; ?: ; ?: ; ?: ",
+      "success": true,
+      "summary": "Retrieved guidance for \"CIS benchmark recommendations for PostgreSQL security hardening\": [CIS PostgreSQL 16 Benchmark v1.0 (paraphrased extracts)] # CIS PostgreSQL 16 \u2014 Level 1 Controls (Implemented) The following controls are paraphrased summaries of CIS Benchmark recommendations relevant to the project's PostgreSQL validator. Only controls that the validator checks are included. ##  | [CIS PostgreSQL 16 Benchmark v1.0 (paraphrased extracts)] '*'` causes PostgreSQL to accept connections on every network interface, including public-facing ones. This unnecessarily increases the attack surface by exposing the database port to networks that should not have direct access. Set `listen Retrieved guidance for \"CIS benchmark recommendations for nginx security hardening\": [CIS nginx Benchmark v2.0 (paraphrased extracts)] # CIS nginx \u2014 Level 1 Controls (Implemented) The following controls are paraphrased summaries of CIS Benchmark recommendations relevant to the project's nginx validator. Only controls that the validator checks are included. ## 2.4.x \u2014 Reque | [Mozilla SSL Configuration Generator] # Mozilla SSL Configuration Generator \u2014 nginx Reference The Mozilla SSL Configuration Generator provides vetted TLS configurations for common web servers. It offers three profiles (Modern, Intermediate, and Old) that balance security streng",
+      "tokens_used": 2092,
+      "iterations_used": 2,
+      "artifacts": {}
+    },
+    {
+      "worker": "security",
+      "task": "Review the current Docker Stack configuration for nginx, PostgreSQL, and Redis. Address the remaining CIS benchmarks and security hardening recommendations, especially focusing on network exposure, PostgreSQL security settings, and any other identified vulnerabilities. Provide detailed guidance or revised configuration snippets to enhance security and compliance.\n\nCIS failures to address: ?: ; ?: ; ?: ; ?: ; ?: ; ?: ; ?: ; ?: ",
+      "success": true,
+      "summary": "Retrieved guidance for \"CIS benchmarks for PostgreSQL, nginx, and Redis security hardening best practice\": [CIS Redis Benchmark v1.0 (paraphrased extracts)] # CIS Redis \u2014 Level 1 Controls (Implemented) The following controls are paraphrased summaries of CIS Benchmark recommendations relevant to the project's Redis validator. Only controls that the validator checks are included. ## Network and A | [CIS PostgreSQL 16 Benchmark v1.0 (paraphrased extracts)] '*'` causes PostgreSQL to accept connections on every network interface, including public-facing ones. This unnecessarily increases the attack surface by exposing the database port to networks that should not have direct access. Set `listen Retrieved guidance for \"CIS benchmarks for PostgreSQL security hardening, especially network exposure, a\": [CIS PostgreSQL 16 Benchmark v1.0 (paraphrased extracts)] '*'` causes PostgreSQL to accept connections on every network interface, including public-facing ones. This unnecessarily increases the attack surface by exposing the database port to networks that should not have direct access. Set `listen | [CIS PostgreSQL 16 Benchmark v1.0 (paraphrased extracts)] # CIS PostgreSQL 16 \u2014 Level 1 Controls (Implemented) The following controls are paraphrased summaries of CIS Benchmark recommendations relevant to the project's PostgreSQL validator. Only controls that the validator checks are included. ## ",
+      "tokens_used": 2088,
+      "iterations_used": 2,
+      "artifacts": {}
+    },
+    {
+      "worker": "security",
+      "task": "Review the current Docker Stack configuration for nginx, PostgreSQL, and Redis, focusing on the remaining CIS benchmark compliance issues related to network exposure and security hardening. Provide specific configuration modifications or guidance to address these vulnerabilities and improve overall security posture.\n\nCIS failures to address: ?: ; ?: ; ?: ; ?: ; ?: ; ?: ; ?: ; ?: ",
+      "success": true,
+      "summary": "Retrieved guidance for \"CIS benchmark recommendations for network exposure and security hardening for Po\": [CIS Redis Benchmark v1.0 (paraphrased extracts)] # CIS Redis \u2014 Level 1 Controls (Implemented) The following controls are paraphrased summaries of CIS Benchmark recommendations relevant to the project's Redis validator. Only controls that the validator checks are included. ## Network and A | [CIS PostgreSQL 16 Benchmark v1.0 (paraphrased extracts)] '*'` causes PostgreSQL to accept connections on every network interface, including public-facing ones. This unnecessarily increases the attack surface by exposing the database port to networks that should not have direct access. Set `listen Retrieved guidance for \"CIS benchmark recommendations for network exposure and security hardening for Po\": [CIS Redis Benchmark v1.0 (paraphrased extracts)] # CIS Redis \u2014 Level 1 Controls (Implemented) The following controls are paraphrased summaries of CIS Benchmark recommendations relevant to the project's Redis validator. Only controls that the validator checks are included. ## Network and A | [CIS PostgreSQL 16 Benchmark v1.0 (paraphrased extracts)] '*'` causes PostgreSQL to accept connections on every network interface, including public-facing ones. This unnecessarily increases the attack surface by exposing the database port to networks that should not have direct access. Set `listen",
+      "tokens_used": 2092,
+      "iterations_used": 2,
+      "artifacts": {}
+    },
+    {
+      "worker": "config",
+      "task": "Update the current Docker Stack configuration to address the CIS benchmark security issues, especially limiting PostgreSQL network exposure by configuring it to accept connections only from trusted IP addresses or internal networks. Incorporate the security hardening guidance provided, and prepare a new configuration for deployment and validation.\n\nSecurity worker recommendations to apply: Retrieved guidance for \"CIS benchmark recommendations for network exposure and security hardening for Po\": ",
+      "success": true,
+      "summary": "Retrieved guidance for \"CIS PostgreSQL 16 Benchmark recommended security hardening for network exposure,\": [CIS PostgreSQL 16 Benchmark v1.0 (paraphrased extracts)] # CIS PostgreSQL 16 \u2014 Level 1 Controls (Implemented) The following controls are paraphrased summaries of CIS Benchmark recommendations relevant to the project's PostgreSQL validator. Only controls that the validator checks are included. ##  | [CIS PostgreSQL 16 Benchmark v1.0 (paraphrased extracts)] '*'` causes PostgreSQL to accept connections on every network interface, including public-facing ones. This unnecessarily increases the attack surface by exposing the database port to networks that should not have direct access. Set `listen Retrieved guidance for \"CIS PostgreSQL 16 Benchmark recommended security hardening for 'listen_addresses\": [CIS PostgreSQL 16 Benchmark v1.0 (paraphrased extracts)] '*'` causes PostgreSQL to accept connections on every network interface, including public-facing ones. This unnecessarily increases the attack surface by exposing the database port to networks that should not have direct access. Set `listen | [CIS PostgreSQL 16 Benchmark v1.0 (paraphrased extracts)] # CIS PostgreSQL 16 \u2014 Level 1 Controls (Implemented) The following controls are paraphrased summaries of CIS Benchmark recommendations relevant to the project's PostgreSQL validator. Only controls that the validator checks are included. ##  Generated a StackSpec configuration.",
+      "tokens_used": 22470,
+      "iterations_used": 3,
+      "artifacts": {
+        "last_spec": "<spec>"
+      }
+    },
+    {
+      "worker": "validation",
+      "task": "Deploy the current Docker Stack configuration and run smoke tests, security checks, and CIS benchmarks validation to ensure the system is secure and compliant after recent security hardening updates.\n\nThe StackSpec to validate has been provided via context (auto-injected).",
+      "success": true,
+      "summary": "Validation: 1/1 smoke tests passed, 10/14 CIS checks passed.",
+      "tokens_used": 762,
+      "iterations_used": 1,
+      "artifacts": {
+        "validator_report": {
+          "timestamp": "2026-08-25T19:44:27.346437Z",
+          "smoke_tests": {
+            "postgres": {
+              "did_start": true,
+              "accepts_connections": true,
+              "error_message": null
+            }
+          },
+          "benchmarks": {
+            "postgres": {
+              "throughput": 3701.713607,
+              "latency_p50": 1.081,
+              "latency_p90": null,
+              "latency_p99": null,
+              "error_message": null
+            }
+          },
+          "cis_results": [
+            {
+              "control_id": "1.1",
+              "name": "pg_hba host rules use scram-sha-256 (md5 absent)",
+              "level": 1,
+              "passed": true,
+              "evidence": "# pg_hba.conf - generated, do not edit by hand\n# TYPE\tDATABASE\tUSER\tADDRESS\tMETHOD\nlocal\tall\tall\tpeer\nhost\tall\tall\t127.0.0.1/32\tscram-sha-256\nhostssl\tall\tall\t0.0.0.0/0\tscram-sha-256\n",
+              "service": "postgres"
+            },
+            {
+              "control_id": "1.2",
+              "name": "password_encryption is scram-sha-256",
+              "level": 1,
+              "passed": true,
+              "evidence": "password_encryption = scram-sha-256",
+              "service": "postgres"
+            },
+            {
+              "control_id": "2.1",
+              "name": "log_destination set",
+              "level": 1,
+              "passed": true,
+              "evidence": "log_destination = stderr",
+              "service": "postgres"
+            },
+            {
+              "control_id": "2.2",
+              "name": "log_statement at least ddl",
+              "level": 1,
+              "passed": true,
+              "evidence": "log_statement = ddl",
+              "service": "postgres"
+            },
+            {
+              "control_id": "2.3",
+              "name": "log_connections on",
+              "level": 1,
+              "passed": true,
+              "evidence": "log_connections = on",
+              "service": "postgres"
+            },
+            {
+              "control_id": "2.4",
+              "name": "log_disconnections on",
+              "level": 1,
+              "passed": true,
+              "evidence": "log_disconnections = on",
+              "service": "postgres"
+            },
+            {
+              "control_id": "2.5",
+              "name": "pgAudit extension enabled",
+              "level": 1,
+              "passed": false,
+              "evidence": "extensions: plpgsql",
+              "service": "postgres"
+            },
+            {
+              "control_id": "3.1",
+              "name": "listen_addresses not '*'",
+              "level": 1,
+              "passed": false,
+              "evidence": "listen_addresses = *",
+              "service": "postgres"
+            },
+            {
+              "control_id": "3.2",
+              "name": "ssl on",
+              "level": 1,
+              "passed": false,
+              "evidence": "ssl = off",
+              "service": "postgres"
+            },
+            {
+              "control_id": "3.3",
+              "name": "ssl_min_protocol_version >= TLSv1.2",
+              "level": 1,
+              "passed": true,
+              "evidence": "ssl_min_protocol_version = TLSv1.2",
+              "service": "postgres"
+            },
+            {
+              "control_id": "4.1",
+              "name": "postgres owns no application databases",
+              "level": 1,
+              "passed": true,
+              "evidence": "postgres-owned app databases: none",
+              "service": "postgres"
+            },
+            {
+              "control_id": "4.2",
+              "name": "no superuser roles besides postgres",
+              "level": 1,
+              "passed": true,
+              "evidence": "extra superusers: none",
+              "service": "postgres"
+            },
+            {
+              "control_id": "5.1",
+              "name": "log_min_duration_statement > 0",
+              "level": 1,
+              "passed": true,
+              "evidence": "log_min_duration_statement = 1s",
+              "service": "postgres"
+            },
+            {
+              "control_id": "5.2",
+              "name": "statement_timeout set",
+              "level": 1,
+              "passed": false,
+              "evidence": "statement_timeout = 0",
+              "service": "postgres"
+            }
+          ],
+          "healthchecks": {
+            "postgres": {
+              "healthcheck_present": true,
+              "healthcheck_condition": null
+            }
+          },
+          "error": null
+        }
+      }
+    },
+    {
+      "worker": "config",
+      "task": "Update the Docker Compose or deployment configuration for PostgreSQL to restrict network exposure according to CIS benchmark guidelines, such as binding PostgreSQL to internal IPs only and disabling public network interfaces. Incorporate any other specific hardening recommendations from the CIS PostgreSQL benchmark. Prepare and deliver the updated configuration for further deployment and validation.\n\nSecurity worker recommendations to apply: Retrieved guidance for \"CIS benchmark recommendations ",
+      "success": true,
+      "summary": "Retrieved guidance for \"What are the CIS benchmark recommendations for network exposure and security har\": [CIS PostgreSQL 16 Benchmark v1.0 (paraphrased extracts)] '*'` causes PostgreSQL to accept connections on every network interface, including public-facing ones. This unnecessarily increases the attack surface by exposing the database port to networks that should not have direct access. Set `listen | [CIS PostgreSQL 16 Benchmark v1.0 (paraphrased extracts)] # CIS PostgreSQL 16 \u2014 Level 1 Controls (Implemented) The following controls are paraphrased summaries of CIS Benchmark recommendations relevant to the project's PostgreSQL validator. Only controls that the validator checks are included. ##  Generated a StackSpec configuration.",
+      "tokens_used": 8742,
+      "iterations_used": 2,
+      "artifacts": {
+        "last_spec": "<spec>"
+      }
+    },
+    {
+      "worker": "config",
+      "task": "Update the Docker Stack configuration for nginx, PostgreSQL, and Redis to address the remaining CIS benchmark failures, focusing on network exposure restrictions (such as binding PostgreSQL to internal IPs only, disabling public interfaces), and compliance hardening as per CIS guidelines. Prepare the revised configuration for deployment and validation.\n\nSecurity worker recommendations to apply: Retrieved guidance for \"CIS benchmark recommendations for network exposure and security hardening for ",
+      "success": true,
+      "summary": "multi_tool_use.parallel failed: unknown tool: 'multi_tool_use.parallel' Retrieved guidance for \"CIS benchmark recommendations for network exposure and security hardening for Po\": [CIS Redis Benchmark v1.0 (paraphrased extracts)] # CIS Redis \u2014 Level 1 Controls (Implemented) The following controls are paraphrased summaries of CIS Benchmark recommendations relevant to the project's Redis validator. Only controls that the validator checks are included. ## Network and A | [CIS PostgreSQL 16 Benchmark v1.0 (paraphrased extracts)] '*'` causes PostgreSQL to accept connections on every network interface, including public-facing ones. This unnecessarily increases the attack surface by exposing the database port to networks that should not have direct access. Set `listen Generated a StackSpec configuration.",
+      "tokens_used": 11151,
+      "iterations_used": 3,
+      "artifacts": {
+        "last_spec": "<spec>"
+      }
+    },
+    {
+      "worker": "config",
+      "task": "Update the Docker Compose or deployment configuration for nginx, PostgreSQL, and Redis to restrict network exposure according to CIS benchmark guidelines. Bind PostgreSQL and Redis to internal IP addresses only, disable public network interfaces, and incorporate other CIS-recommended hardening measures. Prepare the configuration for deployment and validation.\n\nSecurity worker recommendations to apply: Retrieved guidance for \"CIS benchmark recommendations for network exposure and security hardeni",
+      "success": true,
+      "summary": "Retrieved guidance for \"CIS benchmark recommendations for network exposure and security hardening for Po\": [CIS Redis Benchmark v1.0 (paraphrased extracts)] # CIS Redis \u2014 Level 1 Controls (Implemented) The following controls are paraphrased summaries of CIS Benchmark recommendations relevant to the project's Redis validator. Only controls that the validator checks are included. ## Network and A | [CIS PostgreSQL 16 Benchmark v1.0 (paraphrased extracts)] '*'` causes PostgreSQL to accept connections on every network interface, including public-facing ones. This unnecessarily increases the attack surface by exposing the database port to networks that should not have direct access. Set `listen Retrieved guidance for \"Configuration options for PostgreSQL to bind only to internal network interfaces\": [CIS PostgreSQL 16 Benchmark v1.0 (paraphrased extracts)] '*'` causes PostgreSQL to accept connections on every network interface, including public-facing ones. This unnecessarily increases the attack surface by exposing the database port to networks that should not have direct access. Set `listen | [CIS Redis Benchmark v1.0 (paraphrased extracts)] # CIS Redis \u2014 Level 1 Controls (Implemented) The following controls are paraphrased summaries of CIS Benchmark recommendations relevant to the project's Redis validator. Only controls that the validator checks are included. ## Network and A Generated a StackSpec configuration.",
+      "tokens_used": 16152,
+      "iterations_used": 3,
+      "artifacts": {
+        "last_spec": "<spec>"
+      }
+    },
+    {
+      "worker": "validation",
+      "task": "Re-deploy the current Docker Stack with the latest configuration updates focusing on network exposure restrictions for PostgreSQL and Redis. Run a final round of validation to confirm the system is secure, compliant with CIS benchmarks, and functional as expected. No further configuration changes are needed unless issues are identified.\n\nThe StackSpec to validate has been provided via context (auto-injected).",
+      "success": true,
+      "summary": "Validation: 2/2 smoke tests passed, 19/22 CIS checks passed.",
+      "tokens_used": 765,
+      "iterations_used": 1,
+      "artifacts": {
+        "validator_report": {
+          "timestamp": "2026-08-25T19:45:46.580833Z",
+          "smoke_tests": {
+            "postgres": {
+              "did_start": true,
+              "accepts_connections": true,
+              "error_message": null
+            },
+            "redis": {
+              "did_start": true,
+              "accepts_connections": true,
+              "error_message": null
+            }
+          },
+          "benchmarks": {
+            "postgres": {
+              "throughput": 3342.692579,
+              "latency_p50": 1.197,
+              "latency_p90": null,
+              "latency_p99": null,
+              "error_message": null
+            },
+            "redis": {
+              "throughput": 167929.29499999998,
+              "latency_p50": 0.031,
+              "latency_p90": null,
+              "latency_p99": null,
+              "error_message": null
+            }
+          },
+          "cis_results": [
+            {
+              "control_id": "1.1",
+              "name": "pg_hba host rules use scram-sha-256 (md5 absent)",
+              "level": 1,
+              "passed": true,
+              "evidence": "# pg_hba.conf - generated, do not edit by hand\n# TYPE\tDATABASE\tUSER\tADDRESS\tMETHOD\nlocal\tall\tall\tpeer\nhost\tall\tall\t127.0.0.1/32\tscram-sha-256\nhostssl\tall\tall\t0.0.0.0/0\tscram-sha-256\n",
+              "service": "postgres"
+            },
+            {
+              "control_id": "1.2",
+              "name": "password_encryption is scram-sha-256",
+              "level": 1,
+              "passed": true,
+              "evidence": "password_encryption = scram-sha-256",
+              "service": "postgres"
+            },
+            {
+              "control_id": "2.1",
+              "name": "log_destination set",
+              "level": 1,
+              "passed": true,
+              "evidence": "log_destination = stderr",
+              "service": "postgres"
+            },
+            {
+              "control_id": "2.2",
+              "name": "log_statement at least ddl",
+              "level": 1,
+              "passed": true,
+              "evidence": "log_statement = ddl",
+              "service": "postgres"
+            },
+            {
+              "control_id": "2.3",
+              "name": "log_connections on",
+              "level": 1,
+              "passed": true,
+              "evidence": "log_connections = on",
+              "service": "postgres"
+            },
+            {
+              "control_id": "2.4",
+              "name": "log_disconnections on",
+              "level": 1,
+              "passed": true,
+              "evidence": "log_disconnections = on",
+              "service": "postgres"
+            },
+            {
+              "control_id": "2.5",
+              "name": "pgAudit extension enabled",
+              "level": 1,
+              "passed": false,
+              "evidence": "extensions: plpgsql",
+              "service": "postgres"
+            },
+            {
+              "control_id": "3.1",
+              "name": "listen_addresses not '*'",
+              "level": 1,
+              "passed": true,
+              "evidence": "listen_addresses = 127.0.0.1",
+              "service": "postgres"
+            },
+            {
+              "control_id": "3.2",
+              "name": "ssl on",
+              "level": 1,
+              "passed": true,
+              "evidence": "ssl = on",
+              "service": "postgres"
+            },
+            {
+              "control_id": "3.3",
+              "name": "ssl_min_protocol_version >= TLSv1.2",
+              "level": 1,
+              "passed": true,
+              "evidence": "ssl_min_protocol_version = TLSv1.2",
+              "service": "postgres"
+            },
+            {
+              "control_id": "4.1",
+              "name": "postgres owns no application databases",
+              "level": 1,
+              "passed": true,
+              "evidence": "postgres-owned app databases: none",
+              "service": "postgres"
+            },
+            {
+              "control_id": "4.2",
+              "name": "no superuser roles besides postgres",
+              "level": 1,
+              "passed": true,
+              "evidence": "extra superusers: none",
+              "service": "postgres"
+            },
+            {
+              "control_id": "5.1",
+              "name": "log_min_duration_statement > 0",
+              "level": 1,
+              "passed": true,
+              "evidence": "log_min_duration_statement = 1s",
+              "service": "postgres"
+            },
+            {
+              "control_id": "5.2",
+              "name": "statement_timeout set",
+              "level": 1,
+              "passed": false,
+              "evidence": "statement_timeout = 0",
+              "service": "postgres"
+            },
+            {
+              "control_id": "1.1",
+              "name": "protected-mode on",
+              "level": 1,
+              "passed": true,
+              "evidence": "protected-mode yes",
+              "service": "redis"
+            },
+            {
+              "control_id": "1.2",
+              "name": "not bound to 0.0.0.0",
+              "level": 1,
+              "passed": true,
+              "evidence": "bind 127.0.0.1",
+              "service": "redis"
+            },
+            {
+              "control_id": "2.1",
+              "name": "requirepass or ACLs configured",
+              "level": 1,
+              "passed": true,
+              "evidence": "requirepass set",
+              "service": "redis"
+            },
+            {
+              "control_id": "2.2",
+              "name": "authentication enforced at runtime",
+              "level": 1,
+              "passed": true,
+              "evidence": "unauthenticated ping -> NOAUTH Authentication required.",
+              "service": "redis"
+            },
+            {
+              "control_id": "3.1",
+              "name": "dangerous commands renamed or disabled",
+              "level": 1,
+              "passed": false,
+              "evidence": "not renamed: FLUSHALL, FLUSHDB, CONFIG, EVAL, DEBUG, SHUTDOWN",
+              "service": "redis"
+            },
+            {
+              "control_id": "4.1",
+              "name": "durability configured (AOF or RDB)",
+              "level": 1,
+              "passed": true,
+              "evidence": "appendonly yes; save present",
+              "service": "redis"
+            },
+            {
+              "control_id": "4.2",
+              "name": "maxmemory set (non-zero)",
+              "level": 1,
+              "passed": true,
+              "evidence": "maxmemory 1GB",
+              "service": "redis"
+            },
+            {
+              "control_id": "4.3",
+              "name": "maxmemory-policy not noeviction",
+              "level": 1,
+              "passed": true,
+              "evidence": "maxmemory-policy allkeys-lru",
+              "service": "redis"
+            }
+          ],
+          "healthchecks": {
+            "postgres": {
+              "healthcheck_present": true,
+              "healthcheck_condition": null
+            },
+            "redis": {
+              "healthcheck_present": true,
+              "healthcheck_condition": null
+            }
+          },
+          "error": null
+        }
+      }
+    }
+  ],
+  "scores": {
+    "completed": true,
+    "cis_pass_rate": 0.8636363636363636,
+    "cis_pass_rate_actionable": 0.95,
+    "cis_controls_actionable": 20,
+    "cis_controls_total": 22,
+    "smoke_pass_rate": 1.0,
+    "selection_exact_match": false,
+    "selection_precision": 0.5,
+    "selection_recall": 0.3333333333333333,
+    "selection_f1": 0.4,
+    "selection_detail": [
+      {
+        "service": "postgres",
+        "expected": true,
+        "selected": true,
+        "verdict": "true_positive"
+      },
+      {
+        "service": "nginx",
+        "expected": true,
+        "selected": false,
+        "verdict": "false_negative"
+      },
+      {
+        "service": "redis",
+        "expected": false,
+        "selected": true,
+        "verdict": "false_positive"
+      },
+      {
+        "service": "rabbitmq",
+        "expected": true,
+        "selected": false,
+        "verdict": "false_negative"
+      }
+    ],
+    "correctness": 0.7142857142857143,
+    "parameters_checked": 7,
+    "parameter_details": [
+      {
+        "parameter": "postgres.shared_buffers_range",
+        "comparison": "range",
+        "expected": [
+          "1.2GB",
+          "2.8GB"
+        ],
+        "spec_path": "postgres.memory.shared_buffers",
+        "actual": "4GB",
+        "passed": false,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.effective_cache_size_range",
+        "comparison": "range",
+        "expected": [
+          "3.2GB",
+          "6GB"
+        ],
+        "spec_path": "postgres.memory.effective_cache_size",
+        "actual": "12GB",
+        "passed": false,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.maintenance_work_mem_range",
+        "comparison": "range",
+        "expected": [
+          "256MB",
+          "1GB"
+        ],
+        "spec_path": "postgres.memory.maintenance_work_mem",
+        "actual": "512MB",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.max_connections_range",
+        "comparison": "range",
+        "expected": [
+          50,
+          200
+        ],
+        "spec_path": "postgres.connections.max_connections",
+        "actual": 200,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.ssl",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "postgres.security.ssl",
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.password_encryption",
+        "comparison": "equality",
+        "expected": "scram-sha-256",
+        "spec_path": "postgres.security.password_encryption",
+        "actual": "scram-sha-256",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.wal_level_acceptable",
+        "comparison": "membership",
+        "expected": [
+          "replica",
+          "logical"
+        ],
+        "spec_path": "postgres.wal.wal_level",
+        "actual": "replica",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "nginx.*",
+        "comparison": null,
+        "expected": [
+          "server_tokens",
+          "ssl_protocols_min"
+        ],
+        "spec_path": "nginx",
+        "actual": null,
+        "passed": null,
+        "status": "not_selected"
+      },
+      {
+        "parameter": "rabbitmq.*",
+        "comparison": null,
+        "expected": [
+          "default_pass_set",
+          "default_user_not_guest",
+          "disk_free_limit_range",
+          "heartbeat_range",
+          "management_listener_ip",
+          "max_connections_set",
+          "vm_memory_high_watermark_range"
+        ],
+        "spec_path": "rabbitmq",
+        "actual": null,
+        "passed": null,
+        "status": "not_selected"
+      }
+    ]
+  }
+}

@@ -1,0 +1,701 @@
+{
+  "scenario_id": "s2_005_inferred_cache",
+  "scenario_text": "It's a price comparison page. The same twenty or so listings get requested\nthousands of times an hour \u2014 everyone lands on the same handful \u2014 and the\nprices behind them only get refreshed from suppliers three or four times a\nday. Between refreshes the answer to every request is identical. Around 300 \npeople on the site at once, roughly 5 GB of listing and price data. The box\nis 6 GB RAM, 4 vCPU. Nothing regulated.\n",
+  "architecture": "multi",
+  "model": "gpt-4.1-nano-2025-04-14",
+  "git_commit": "e949b50569da26f7f5f913212271fde6515d1c3f",
+  "git_dirty": true,
+  "run_id": "177954e77abd",
+  "started_at": "2026-08-26T04:44:11.511255+00:00",
+  "finished_at": "2026-08-26T04:52:08.184426+00:00",
+  "tokens_used": 125076,
+  "per_agent_tokens": {
+    "config": 107202,
+    "validation": 693,
+    "security": 4092,
+    "orchestrator": 13089
+  },
+  "wall_clock_s": 476.60867395899913,
+  "max_iterations": 25,
+  "termination_reason": "finalised",
+  "services_deployed": [
+    "postgres",
+    "nginx",
+    "redis"
+  ],
+  "final_spec": {
+    "requirements": {
+      "workload_class": "BALANCED",
+      "expected_concurrent_users": 10,
+      "expected_data_size_gb": 5.0,
+      "hardware": {
+        "ram_gb": 8.0,
+        "vcpu": 4,
+        "disk_gb": 100.0
+      },
+      "compliance": "NONE",
+      "backup_required": false,
+      "selected_services": null
+    },
+    "postgres": {
+      "memory": {
+        "shared_buffers": "2GB",
+        "effective_cache_size": "6GB",
+        "work_mem": "32MB",
+        "maintenance_work_mem": "512MB"
+      },
+      "connections": {
+        "max_connections": 100,
+        "superuser_reserved_connections": 3
+      },
+      "wal": {
+        "wal_level": "replica",
+        "checkpoint_completion_target": 0.9,
+        "max_wal_size": "1GB"
+      },
+      "security": {
+        "ssl": true,
+        "password_encryption": "scram-sha-256",
+        "log_connections": true,
+        "log_disconnections": true,
+        "ssl_min_protocol_version": "TLSv1.2"
+      },
+      "logging": {
+        "log_destination": "stderr",
+        "log_statement": "ddl",
+        "log_min_duration_statement": 1000
+      },
+      "listen_addresses": "*"
+    },
+    "nginx": {
+      "worker": {
+        "worker_processes": "auto",
+        "worker_connections": 1024
+      },
+      "http": {
+        "sendfile": true,
+        "tcp_nopush": true,
+        "tcp_nodelay": true,
+        "keepalive_timeout": 65,
+        "keepalive_requests": 100,
+        "gzip": true
+      },
+      "security": {
+        "server_tokens": false,
+        "autoindex": false,
+        "client_max_body_size": "10m"
+      },
+      "ssl": {
+        "protocols": [
+          "TLSv1.2",
+          "TLSv1.3"
+        ],
+        "ciphers": "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256",
+        "prefer_server_ciphers": true,
+        "session_cache": "shared:SSL:10m",
+        "session_timeout": "1d",
+        "stapling": true
+      }
+    },
+    "redis": {
+      "memory": {
+        "maxmemory": "512MB",
+        "maxmemory_policy": "allkeys-lru",
+        "maxmemory_samples": 5
+      },
+      "persistence": {
+        "save": [
+          "3600 1",
+          "300 100"
+        ],
+        "appendonly": true,
+        "appendfsync": "everysec"
+      },
+      "security": {
+        "protected_mode": true,
+        "requirepass": "change-me-strong-password",
+        "rename_commands": {
+          "FLUSHALL": "",
+          "CONFIG": "CONFIG_a1b2c3"
+        }
+      },
+      "networking": {
+        "bind": [
+          "127.0.0.1"
+        ],
+        "port": 6379,
+        "tls_port": null
+      }
+    },
+    "rabbitmq": null,
+    "pg_hba": {
+      "rules": [
+        {
+          "type": "local",
+          "database": "all",
+          "user": "all",
+          "address": null,
+          "auth_method": "peer"
+        },
+        {
+          "type": "host",
+          "database": "all",
+          "user": "all",
+          "address": "127.0.0.1/32",
+          "auth_method": "scram-sha-256"
+        },
+        {
+          "type": "hostssl",
+          "database": "all",
+          "user": "all",
+          "address": "0.0.0.0/0",
+          "auth_method": "scram-sha-256"
+        }
+      ]
+    }
+  },
+  "validator_report": {
+    "timestamp": "2026-08-26T04:51:39.835669Z",
+    "smoke_tests": {
+      "postgres": {
+        "did_start": true,
+        "accepts_connections": true,
+        "error_message": null
+      }
+    },
+    "benchmarks": {
+      "postgres": {
+        "throughput": 3804.468933,
+        "latency_p50": 1.051,
+        "latency_p90": null,
+        "latency_p99": null,
+        "error_message": null
+      }
+    },
+    "cis_results": [
+      {
+        "control_id": "1.1",
+        "name": "pg_hba host rules use scram-sha-256 (md5 absent)",
+        "level": 1,
+        "passed": true,
+        "evidence": "# pg_hba.conf - generated, do not edit by hand\n# TYPE\tDATABASE\tUSER\tADDRESS\tMETHOD\nlocal\tall\tall\tpeer\nhost\tall\tall\t127.0.0.1/32\tscram-sha-256\nhostssl\tall\tall\t0.0.0.0/0\tscram-sha-256\n",
+        "service": "postgres"
+      },
+      {
+        "control_id": "1.2",
+        "name": "password_encryption is scram-sha-256",
+        "level": 1,
+        "passed": true,
+        "evidence": "password_encryption = scram-sha-256",
+        "service": "postgres"
+      },
+      {
+        "control_id": "2.1",
+        "name": "log_destination set",
+        "level": 1,
+        "passed": true,
+        "evidence": "log_destination = stderr",
+        "service": "postgres"
+      },
+      {
+        "control_id": "2.2",
+        "name": "log_statement at least ddl",
+        "level": 1,
+        "passed": true,
+        "evidence": "log_statement = ddl",
+        "service": "postgres"
+      },
+      {
+        "control_id": "2.3",
+        "name": "log_connections on",
+        "level": 1,
+        "passed": true,
+        "evidence": "log_connections = on",
+        "service": "postgres"
+      },
+      {
+        "control_id": "2.4",
+        "name": "log_disconnections on",
+        "level": 1,
+        "passed": true,
+        "evidence": "log_disconnections = on",
+        "service": "postgres"
+      },
+      {
+        "control_id": "2.5",
+        "name": "pgAudit extension enabled",
+        "level": 1,
+        "passed": false,
+        "evidence": "extensions: plpgsql",
+        "service": "postgres"
+      },
+      {
+        "control_id": "3.1",
+        "name": "listen_addresses not '*'",
+        "level": 1,
+        "passed": false,
+        "evidence": "listen_addresses = *",
+        "service": "postgres"
+      },
+      {
+        "control_id": "3.2",
+        "name": "ssl on",
+        "level": 1,
+        "passed": true,
+        "evidence": "ssl = on",
+        "service": "postgres"
+      },
+      {
+        "control_id": "3.3",
+        "name": "ssl_min_protocol_version >= TLSv1.2",
+        "level": 1,
+        "passed": true,
+        "evidence": "ssl_min_protocol_version = TLSv1.2",
+        "service": "postgres"
+      },
+      {
+        "control_id": "4.1",
+        "name": "postgres owns no application databases",
+        "level": 1,
+        "passed": true,
+        "evidence": "postgres-owned app databases: none",
+        "service": "postgres"
+      },
+      {
+        "control_id": "4.2",
+        "name": "no superuser roles besides postgres",
+        "level": 1,
+        "passed": true,
+        "evidence": "extra superusers: none",
+        "service": "postgres"
+      },
+      {
+        "control_id": "5.1",
+        "name": "log_min_duration_statement > 0",
+        "level": 1,
+        "passed": true,
+        "evidence": "log_min_duration_statement = 1s",
+        "service": "postgres"
+      },
+      {
+        "control_id": "5.2",
+        "name": "statement_timeout set",
+        "level": 1,
+        "passed": false,
+        "evidence": "statement_timeout = 0",
+        "service": "postgres"
+      }
+    ],
+    "healthchecks": {
+      "postgres": {
+        "healthcheck_present": true,
+        "healthcheck_condition": null
+      }
+    },
+    "error": null
+  },
+  "history": [
+    {
+      "worker": "config",
+      "task": "Generate an initial Docker-based deployment configuration for nginx, PostgreSQL, and Redis to host a high-traffic price comparison website. The config should optimize resource usage for 6 GB RAM, 4 vCPU, handle caching for static data, and ensure reliability.",
+      "success": true,
+      "summary": "generate_config failed: openai: output failed schema validation after 3 retries: <failed_attempts>\n\n<generation number=\"1\">\n Retrieved guidance for \"How to configure PostgreSQL, nginx, and Redis for high traffic, static data cach\": [pgtune heuristics (community rules)] # PGTune Heuristics PGTune is a community tool that generates PostgreSQL configuration recommendations based on hardware specifications and workload type. The following heuristics represent widely adopted tuning rules derived from pgtune (p | [Resource allocation heuristics for single-host stacks (authored)] # Resource Allocation Guide for Single-Host Stacks This guide provides sizing heuristics for a single machine running nginx, PostgreSQL, and Redis under Docker Compose. Allocations are expressed as percentages of total host RAM and CPU core Retrieved guidance for \"How to configure PostgreSQL, nginx, and Redis for high traffic, static data cach\": [pgtune heuristics (community rules)] # PGTune Heuristics PGTune is a community tool that generates PostgreSQL configuration recommendations based on hardware specifications and workload type. The following heuristics represent widely adopted tuning rules derived from pgtune (p | [Resource allocation heuristics for single-host stacks (authored)] # Resource Allocation Guide for Single-Host Stacks This guide provides sizing heuristics for a single machine running nginx, PostgreSQL, and Redis under Docker Compose. Allocations are expressed as percentages of total host RAM and CPU core generate_config failed: openai: output failed schema validation after 3 retries: <failed_attempts>\n\n<generation number=\"1\">\n generate_config failed: openai: output failed schema validation after 3 retries: <failed_attempts>\n\n<generation number=\"1\">\n",
+      "tokens_used": 9629,
+      "iterations_used": 5,
+      "artifacts": {}
+    },
+    {
+      "worker": "config",
+      "task": "Regenerate the deployment configuration for nginx, PostgreSQL, and Redis suitable for a high-traffic price comparison page, with resources, caching, and reliability in mind. Ensure the configuration is detailed and validated to avoid schema errors.",
+      "success": true,
+      "summary": "Retrieved guidance for \"best practices for tuning nginx, PostgreSQL, and Redis for high traffic, caching\": [Resource allocation heuristics for single-host stacks (authored)] # Resource Allocation Guide for Single-Host Stacks This guide provides sizing heuristics for a single machine running nginx, PostgreSQL, and Redis under Docker Compose. Allocations are expressed as percentages of total host RAM and CPU core | [Crunchy Data PostgreSQL Tuning Guide] # Crunchy Data PostgreSQL Tuning Recommendations ## shared_buffers Set to approximately 25% of total system RAM for most workloads. This is PostgreSQL's dedicated shared memory cache for table and index data. Going beyond 8GB rarely yields  Generated a StackSpec configuration.",
+      "tokens_used": 47693,
+      "iterations_used": 2,
+      "artifacts": {
+        "last_spec": "<spec>"
+      }
+    },
+    {
+      "worker": "config",
+      "task": "Regenerate the Docker deployment configuration for nginx, PostgreSQL, and Redis tailored for a high-traffic price comparison website. Use the provided resource heuristics and tuning guidance, ensure schema validation, include caching strategies, resource allocations, and reliability considerations.",
+      "success": false,
+      "summary": "multi_tool_use.parallel failed: unknown tool: 'multi_tool_use.parallel' multi_tool_use.parallel failed: unknown tool: 'multi_tool_use.parallel' multi_tool_use.parallel failed: unknown tool: 'multi_tool_use.parallel' multi_tool_use.parallel failed: unknown tool: 'multi_tool_use.parallel' multi_tool_use.parallel failed: unknown tool: 'multi_tool_use.parallel'",
+      "tokens_used": 9558,
+      "iterations_used": 5,
+      "artifacts": {}
+    },
+    {
+      "worker": "config",
+      "task": "Generate a detailed, validated Docker Compose configuration for nginx, PostgreSQL, and Redis suitable for a high-traffic price comparison page. Use resource heuristics (such as approx. 25% RAM for PostgreSQL, caching strategies, and reliability considerations) as guidelines. Ensure the configuration schema is valid and ready for deployment.",
+      "success": true,
+      "summary": "Retrieved guidance for \"Best practices for configuring nginx, PostgreSQL, and Redis for high traffic web\": [pgtune heuristics (community rules)] # PGTune Heuristics PGTune is a community tool that generates PostgreSQL configuration recommendations based on hardware specifications and workload type. The following heuristics represent widely adopted tuning rules derived from pgtune (p | [pgtune heuristics (community rules)] encouraging the use of index scans where appropriate. ### effective_io_concurrency Set to 200 for SSD-based storage (default is 1). This allows PostgreSQL to issue multiple concurrent I/O requests, taking advantage of SSD parallelism during Retrieved guidance for \"Best practices for configuring nginx, PostgreSQL, and Redis for high traffic web\": [pgtune heuristics (community rules)] # PGTune Heuristics PGTune is a community tool that generates PostgreSQL configuration recommendations based on hardware specifications and workload type. The following heuristics represent widely adopted tuning rules derived from pgtune (p | [pgtune heuristics (community rules)] encouraging the use of index scans where appropriate. ### effective_io_concurrency Set to 200 for SSD-based storage (default is 1). This allows PostgreSQL to issue multiple concurrent I/O requests, taking advantage of SSD parallelism during Generated a StackSpec configuration.",
+      "tokens_used": 21229,
+      "iterations_used": 3,
+      "artifacts": {
+        "last_spec": "<spec>"
+      }
+    },
+    {
+      "worker": "validation",
+      "task": "Deploy the generated Docker Compose configuration for nginx, PostgreSQL, and Redis, then run smoke tests, performance benchmarks, and security checks to validate the setup.\n\nThe StackSpec to validate has been provided via context (auto-injected).",
+      "success": true,
+      "summary": "Validation: 1/1 smoke tests passed, 11/14 CIS checks passed.",
+      "tokens_used": 693,
+      "iterations_used": 1,
+      "artifacts": {
+        "validator_report": {
+          "timestamp": "2026-08-26T04:51:39.835669Z",
+          "smoke_tests": {
+            "postgres": {
+              "did_start": true,
+              "accepts_connections": true,
+              "error_message": null
+            }
+          },
+          "benchmarks": {
+            "postgres": {
+              "throughput": 3804.468933,
+              "latency_p50": 1.051,
+              "latency_p90": null,
+              "latency_p99": null,
+              "error_message": null
+            }
+          },
+          "cis_results": [
+            {
+              "control_id": "1.1",
+              "name": "pg_hba host rules use scram-sha-256 (md5 absent)",
+              "level": 1,
+              "passed": true,
+              "evidence": "# pg_hba.conf - generated, do not edit by hand\n# TYPE\tDATABASE\tUSER\tADDRESS\tMETHOD\nlocal\tall\tall\tpeer\nhost\tall\tall\t127.0.0.1/32\tscram-sha-256\nhostssl\tall\tall\t0.0.0.0/0\tscram-sha-256\n",
+              "service": "postgres"
+            },
+            {
+              "control_id": "1.2",
+              "name": "password_encryption is scram-sha-256",
+              "level": 1,
+              "passed": true,
+              "evidence": "password_encryption = scram-sha-256",
+              "service": "postgres"
+            },
+            {
+              "control_id": "2.1",
+              "name": "log_destination set",
+              "level": 1,
+              "passed": true,
+              "evidence": "log_destination = stderr",
+              "service": "postgres"
+            },
+            {
+              "control_id": "2.2",
+              "name": "log_statement at least ddl",
+              "level": 1,
+              "passed": true,
+              "evidence": "log_statement = ddl",
+              "service": "postgres"
+            },
+            {
+              "control_id": "2.3",
+              "name": "log_connections on",
+              "level": 1,
+              "passed": true,
+              "evidence": "log_connections = on",
+              "service": "postgres"
+            },
+            {
+              "control_id": "2.4",
+              "name": "log_disconnections on",
+              "level": 1,
+              "passed": true,
+              "evidence": "log_disconnections = on",
+              "service": "postgres"
+            },
+            {
+              "control_id": "2.5",
+              "name": "pgAudit extension enabled",
+              "level": 1,
+              "passed": false,
+              "evidence": "extensions: plpgsql",
+              "service": "postgres"
+            },
+            {
+              "control_id": "3.1",
+              "name": "listen_addresses not '*'",
+              "level": 1,
+              "passed": false,
+              "evidence": "listen_addresses = *",
+              "service": "postgres"
+            },
+            {
+              "control_id": "3.2",
+              "name": "ssl on",
+              "level": 1,
+              "passed": true,
+              "evidence": "ssl = on",
+              "service": "postgres"
+            },
+            {
+              "control_id": "3.3",
+              "name": "ssl_min_protocol_version >= TLSv1.2",
+              "level": 1,
+              "passed": true,
+              "evidence": "ssl_min_protocol_version = TLSv1.2",
+              "service": "postgres"
+            },
+            {
+              "control_id": "4.1",
+              "name": "postgres owns no application databases",
+              "level": 1,
+              "passed": true,
+              "evidence": "postgres-owned app databases: none",
+              "service": "postgres"
+            },
+            {
+              "control_id": "4.2",
+              "name": "no superuser roles besides postgres",
+              "level": 1,
+              "passed": true,
+              "evidence": "extra superusers: none",
+              "service": "postgres"
+            },
+            {
+              "control_id": "5.1",
+              "name": "log_min_duration_statement > 0",
+              "level": 1,
+              "passed": true,
+              "evidence": "log_min_duration_statement = 1s",
+              "service": "postgres"
+            },
+            {
+              "control_id": "5.2",
+              "name": "statement_timeout set",
+              "level": 1,
+              "passed": false,
+              "evidence": "statement_timeout = 0",
+              "service": "postgres"
+            }
+          ],
+          "healthchecks": {
+            "postgres": {
+              "healthcheck_present": true,
+              "healthcheck_condition": null
+            }
+          },
+          "error": null
+        }
+      }
+    },
+    {
+      "worker": "security",
+      "task": "Review the current Docker Compose configuration for nginx, PostgreSQL, and Redis for security vulnerabilities and CIS compliance issues. Provide hardening recommendations and necessary configuration modifications to improve security posture, especially focusing on CIS Docker benchmarks and best practices.\n\nCIS failures to address: ?: ; ?: ; ?: ",
+      "success": true,
+      "summary": "Retrieved guidance for \"What are the CIS benchmark best practices and hardening recommendations for ngin\": [CIS nginx Benchmark v2.0 (paraphrased extracts)] # CIS nginx \u2014 Level 1 Controls (Implemented) The following controls are paraphrased summaries of CIS Benchmark recommendations relevant to the project's nginx validator. Only controls that the validator checks are included. ## 2.4.x \u2014 Reque | [CIS Redis Benchmark v1.0 (paraphrased extracts)] # CIS Redis \u2014 Level 1 Controls (Implemented) The following controls are paraphrased summaries of CIS Benchmark recommendations relevant to the project's Redis validator. Only controls that the validator checks are included. ## Network and A Retrieved guidance for \"What are the CIS benchmark hardening recommendations for PostgreSQL?\": [CIS PostgreSQL 16 Benchmark v1.0 (paraphrased extracts)] # CIS PostgreSQL 16 \u2014 Level 1 Controls (Implemented) The following controls are paraphrased summaries of CIS Benchmark recommendations relevant to the project's PostgreSQL validator. Only controls that the validator checks are included. ##  | [pgtune heuristics (community rules)] encouraging the use of index scans where appropriate. ### effective_io_concurrency Set to 200 for SSD-based storage (default is 1). This allows PostgreSQL to issue multiple concurrent I/O requests, taking advantage of SSD parallelism during",
+      "tokens_used": 2045,
+      "iterations_used": 2,
+      "artifacts": {}
+    },
+    {
+      "worker": "security",
+      "task": "Review the latest Docker Compose configuration for nginx, PostgreSQL, and Redis for security vulnerabilities and CIS compliance issues. Provide detailed hardening recommendations and configuration modifications to improve security security posture, focusing on CIS Docker benchmarks and best practices.\n\nCIS failures to address: ?: ; ?: ; ?: ",
+      "success": true,
+      "summary": "Retrieved guidance for \"Provide detailed security hardening recommendations and specific configuration m\": [Redis Documentation: Security] # Redis Security Configuration Redis was originally designed for trusted environments, so security hardening is essential for any deployment exposed beyond localhost. The following directives and features control access, authentication, and | [CIS Redis Benchmark v1.0 (paraphrased extracts)] # CIS Redis \u2014 Level 1 Controls (Implemented) The following controls are paraphrased summaries of CIS Benchmark recommendations relevant to the project's Redis validator. Only controls that the validator checks are included. ## Network and A Retrieved guidance for \"Provide detailed security hardening recommendations and specific configuration m\": [Redis Documentation: Security] # Redis Security Configuration Redis was originally designed for trusted environments, so security hardening is essential for any deployment exposed beyond localhost. The following directives and features control access, authentication, and | [CIS Redis Benchmark v1.0 (paraphrased extracts)] # CIS Redis \u2014 Level 1 Controls (Implemented) The following controls are paraphrased summaries of CIS Benchmark recommendations relevant to the project's Redis validator. Only controls that the validator checks are included. ## Network and A",
+      "tokens_used": 2047,
+      "iterations_used": 2,
+      "artifacts": {}
+    },
+    {
+      "worker": "config",
+      "task": "Refine the existing Docker Compose configuration for nginx, PostgreSQL, and Redis by incorporating security hardening recommendations from the latest security review, with a focus on CIS benchmarks and best practices for secure deployment in a high-performance environment. Ensure that the configuration improves overall security posture and addresses the identified CIS non-compliance issues.\n\nSecurity worker recommendations to apply: Retrieved guidance for \"Provide detailed security hardening rec",
+      "success": true,
+      "summary": "Generated a StackSpec configuration.",
+      "tokens_used": 19093,
+      "iterations_used": 1,
+      "artifacts": {
+        "last_spec": "<spec>"
+      }
+    }
+  ],
+  "scores": {
+    "completed": true,
+    "cis_pass_rate": 0.7857142857142857,
+    "cis_pass_rate_actionable": 0.9166666666666666,
+    "cis_controls_actionable": 12,
+    "cis_controls_total": 14,
+    "smoke_pass_rate": 1.0,
+    "selection_exact_match": true,
+    "selection_precision": 1.0,
+    "selection_recall": 1.0,
+    "selection_f1": 1.0,
+    "selection_detail": [
+      {
+        "service": "postgres",
+        "expected": true,
+        "selected": true,
+        "verdict": "true_positive"
+      },
+      {
+        "service": "nginx",
+        "expected": true,
+        "selected": true,
+        "verdict": "true_positive"
+      },
+      {
+        "service": "redis",
+        "expected": true,
+        "selected": true,
+        "verdict": "true_positive"
+      },
+      {
+        "service": "rabbitmq",
+        "expected": false,
+        "selected": false,
+        "verdict": "true_negative"
+      }
+    ],
+    "correctness": 0.8461538461538461,
+    "parameters_checked": 13,
+    "parameter_details": [
+      {
+        "parameter": "postgres.shared_buffers_range",
+        "comparison": "range",
+        "expected": [
+          "922MB",
+          "2.1GB"
+        ],
+        "spec_path": "postgres.memory.shared_buffers",
+        "actual": "2GB",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.effective_cache_size_range",
+        "comparison": "range",
+        "expected": [
+          "2.4GB",
+          "4.5GB"
+        ],
+        "spec_path": "postgres.memory.effective_cache_size",
+        "actual": "6GB",
+        "passed": false,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.maintenance_work_mem_range",
+        "comparison": "range",
+        "expected": [
+          "192MB",
+          "768MB"
+        ],
+        "spec_path": "postgres.memory.maintenance_work_mem",
+        "actual": "512MB",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.max_connections_range",
+        "comparison": "range",
+        "expected": [
+          75,
+          240
+        ],
+        "spec_path": "postgres.connections.max_connections",
+        "actual": 100,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.ssl",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "postgres.security.ssl",
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.password_encryption",
+        "comparison": "equality",
+        "expected": "scram-sha-256",
+        "spec_path": "postgres.security.password_encryption",
+        "actual": "scram-sha-256",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "nginx.server_tokens",
+        "comparison": "equality",
+        "expected": false,
+        "spec_path": "nginx.security.server_tokens",
+        "actual": false,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "nginx.ssl_protocols_min",
+        "comparison": "equality",
+        "expected": "TLSv1.2",
+        "spec_path": "nginx.ssl.protocols",
+        "actual_raw": [
+          "TLSv1.2",
+          "TLSv1.3"
+        ],
+        "actual": "TLSv1.2",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.maxmemory_set",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "redis.memory.maxmemory",
+        "actual_raw": "512MB",
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.maxmemory_range",
+        "comparison": "range",
+        "expected": [
+          "922MB",
+          "2.4GB"
+        ],
+        "spec_path": "redis.memory.maxmemory",
+        "actual": "512MB",
+        "passed": false,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.maxmemory_policy_acceptable",
+        "comparison": "membership",
+        "expected": [
+          "allkeys-lru",
+          "allkeys-lfu"
+        ],
+        "spec_path": "redis.memory.maxmemory_policy",
+        "actual": "allkeys-lru",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.requirepass_or_acl",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "redis.security.requirepass",
+        "actual_raw": "change-me-strong-password",
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.protected_mode",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "redis.security.protected_mode",
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      }
+    ]
+  }
+}

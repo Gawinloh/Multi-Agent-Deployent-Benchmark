@@ -1,0 +1,470 @@
+{
+  "scenario_id": "s2_003_distractor_queue",
+  "scenario_text": "The architecture doc we inherited mentions a message broker, but I can't see\nwhat it would do here. This is a public parts catalogue: people search it,\nopen a listing, and that's the whole interaction \u2014 everything happens while\nthey wait and there's nothing to do afterwards. It's busy though, around 150 at\nonce at peak, and the popular listings get opened constantly while the\nunderlying catalogue is only reloaded from our supplier once a night. About\n12 GB of parts data. Host is 8 GB RAM, 4 vCPU.\n",
+  "architecture": "multi",
+  "model": "gpt-4.1-nano-2025-04-14",
+  "git_commit": "e949b50569da26f7f5f913212271fde6515d1c3f",
+  "git_dirty": true,
+  "run_id": "daa6f4c85745",
+  "started_at": "2026-08-25T18:50:01.310939+00:00",
+  "finished_at": "2026-08-25T18:52:30.771693+00:00",
+  "tokens_used": 71625,
+  "per_agent_tokens": {
+    "config": 56695,
+    "validation": 735,
+    "security": 2977,
+    "orchestrator": 11218
+  },
+  "wall_clock_s": 149.36145008300082,
+  "max_iterations": 25,
+  "termination_reason": "finalised",
+  "services_deployed": [
+    "postgres",
+    "nginx",
+    "redis",
+    "rabbitmq"
+  ],
+  "final_spec": {
+    "requirements": {
+      "workload_class": "BALANCED",
+      "expected_concurrent_users": 10,
+      "expected_data_size_gb": 5.0,
+      "hardware": {
+        "ram_gb": 8.0,
+        "vcpu": 4,
+        "disk_gb": 100.0
+      },
+      "compliance": "NONE",
+      "backup_required": false,
+      "selected_services": [
+        "postgres",
+        "nginx",
+        "redis",
+        "rabbitmq"
+      ]
+    },
+    "postgres": {
+      "memory": {
+        "shared_buffers": "2GB",
+        "effective_cache_size": "6GB",
+        "work_mem": "32MB",
+        "maintenance_work_mem": "512MB"
+      },
+      "connections": {
+        "max_connections": 100,
+        "superuser_reserved_connections": 3
+      },
+      "wal": {
+        "wal_level": "replica",
+        "checkpoint_completion_target": 0.9,
+        "max_wal_size": "1GB"
+      },
+      "security": {
+        "ssl": true,
+        "password_encryption": "scram-sha-256",
+        "log_connections": true,
+        "log_disconnections": true,
+        "ssl_min_protocol_version": "TLSv1.2"
+      },
+      "logging": {
+        "log_destination": "stderr",
+        "log_statement": "ddl",
+        "log_min_duration_statement": 1000
+      },
+      "listen_addresses": "*"
+    },
+    "nginx": {
+      "worker": {
+        "worker_processes": "auto",
+        "worker_connections": 1024
+      },
+      "http": {
+        "sendfile": true,
+        "tcp_nopush": true,
+        "tcp_nodelay": true,
+        "keepalive_timeout": 65,
+        "keepalive_requests": 100,
+        "gzip": true
+      },
+      "security": {
+        "server_tokens": false,
+        "autoindex": false,
+        "client_max_body_size": "10m"
+      },
+      "ssl": {
+        "protocols": [
+          "TLSv1.2",
+          "TLSv1.3"
+        ],
+        "ciphers": "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256",
+        "prefer_server_ciphers": true,
+        "session_cache": "shared:SSL:10m",
+        "session_timeout": "1d",
+        "stapling": true
+      }
+    },
+    "redis": {
+      "memory": {
+        "maxmemory": "512MB",
+        "maxmemory_policy": "allkeys-lru",
+        "maxmemory_samples": 5
+      },
+      "persistence": {
+        "save": [
+          "3600 1",
+          "300 100"
+        ],
+        "appendonly": true,
+        "appendfsync": "everysec"
+      },
+      "security": {
+        "protected_mode": true,
+        "requirepass": "change-me-strong-password",
+        "rename_commands": {
+          "FLUSHALL": "",
+          "CONFIG": "CONFIG_a1b2c3"
+        }
+      },
+      "networking": {
+        "bind": [
+          "127.0.0.1"
+        ],
+        "port": 6379,
+        "tls_port": null
+      }
+    },
+    "rabbitmq": {
+      "resources": {
+        "vm_memory_high_watermark": 0.4,
+        "vm_memory_high_watermark_paging_ratio": 0.5,
+        "disk_free_limit": "2GB"
+      },
+      "networking": {
+        "listener_port": 5672,
+        "listener_ip": "0.0.0.0",
+        "max_connections": 500,
+        "heartbeat": 60
+      },
+      "security": {
+        "default_user": "appuser",
+        "default_pass": "change-me-strong-password",
+        "loopback_users": [
+          "guest"
+        ],
+        "tls_enabled": false,
+        "tls_port": 5671,
+        "tls_verify_peer": false
+      },
+      "management": {
+        "enabled": true,
+        "port": 15672,
+        "listener_ip": "127.0.0.1"
+      }
+    },
+    "pg_hba": {
+      "rules": [
+        {
+          "type": "local",
+          "database": "all",
+          "user": "all",
+          "address": null,
+          "auth_method": "peer"
+        },
+        {
+          "type": "host",
+          "database": "all",
+          "user": "all",
+          "address": "127.0.0.1/32",
+          "auth_method": "scram-sha-256"
+        },
+        {
+          "type": "hostssl",
+          "database": "all",
+          "user": "all",
+          "address": "0.0.0.0/0",
+          "auth_method": "scram-sha-256"
+        }
+      ]
+    }
+  },
+  "validator_report": {
+    "timestamp": "2026-08-25T18:51:52.163847Z",
+    "smoke_tests": {
+      "postgres": {
+        "did_start": true,
+        "accepts_connections": false,
+        "error_message": "5] LOG:  provided user name (postgres) and authenticated user name (root) do not match\n2026-08-25 18:51:51.014 GMT [75] FATAL:  Peer authentication failed for user \"postgres\"\n2026-08-25 18:51:51.014 GMT [75] DETAIL:  Connection matched file \"/etc/postgresql/pg_hba.conf\" line 3: \"local\tall\tall\tpeer\"\n"
+      },
+      "redis": {
+        "did_start": false,
+        "accepts_connections": false,
+        "error_message": "\n*** FATAL CONFIG FILE ERROR (Redis 7.4.11) ***\nReading the configuration file, at line 8\n>>> 'maxmemory 1.2GB'\nargument must be a memory value\n"
+      },
+      "rabbitmq": {
+        "did_start": false,
+        "accepts_connections": false,
+        "error_message": "93+00:00 [info] <0.886.0>  * rabbitmq_management\u001b[0m\n2026-08-25 18:51:49.096493+00:00 [info] <0.886.0>  * rabbitmq_management_agent\u001b[0m\n2026-08-25 18:51:49.096493+00:00 [info] <0.886.0>  * rabbitmq_web_dispatch\u001b[0m\n2026-08-25 18:51:49.161286+00:00 [info] <0.10.0> Time to start RabbitMQ: 2746 ms\u001b[0m\n"
+      },
+      "nginx": {
+        "did_start": false,
+        "accepts_connections": false,
+        "error_message": "k-d49a40cdde8c-redis-1  Started\n Container stack-d49a40cdde8c-redis-1  Waiting\n Container stack-d49a40cdde8c-postgres-1  Waiting\n Container stack-d49a40cdde8c-redis-1  Error\n Container stack-d49a40cdde8c-postgres-1  Healthy\ndependency failed to start: container stack-d49a40cdde8c-redis-1 exited (1)\n"
+      }
+    },
+    "benchmarks": {},
+    "cis_results": [],
+    "healthchecks": {},
+    "error": "startup failed: docker compose up failed (exit 1):  Network stack_d49a40cdde8c_net  Creating\n Network stack_d49a40cdde8c_net  Created\n Volume \"stack-d49a40cdde8c_rabbitmqdata_d49a40cdde8c\"  Creating\n Volume \"stack-d49a40cdde8c_rabbitmqdata_d49a40cdde8c\"  Created\n Volume \"stack-d49a40cdde8c_pgdata_d49a40cdde8c\"  Creating\n Volume \"stack-d49a40cdde8c_pgdata_d49a40cdde8c\"  Created\n Container stack-d49a40cdde8c-rabbitmq-1  Creating\n Container stack-d49a40cdde8c-redis-1  Creating\n Container stack-d49a40cdde8c-postgres-1  Creating\n Container stack-d49a40cdde8c-rabbitmq-1  Created\n Container stack-d49a40cdde8c-redis-1  Created\n Container stack-d49a40cdde8c-postgres-1  Created\n Container stack-d49a40cdde8c-nginx-1  Creating\n Container stack-d49a40cdde8c-nginx-1  Created\n Container stack-d49a40cdde8c-postgres-1  Starting\n Container stack-d49a40cdde8c-redis-1  Starting\n Container stack-d49a40cdde8c-rabbitmq-1  Starting\n Container stack-d49a40cdde8c-postgres-1  Started\n Container stack-d49a40cdde8c-rabbitmq-1  Started\n Container stack-d49a40cdde8c-redis-1  Started\n Container stack-d49a40cdde8c-redis-1  Waiting\n Container stack-d49a40cdde8c-postgres-1  Waiting\n Container stack-d49a40cdde8c-redis-1  Error\n Container stack-d49a40cdde8c-postgres-1  Healthy\ndependency failed to start: container stack-d49a40cdde8c-redis-1 exited (1)\n"
+  },
+  "history": [
+    {
+      "worker": "config",
+      "task": "Generate an initial Docker Compose or StackSpec configuration for a high-read web application with nginx, PostgreSQL, Redis, and an appropriate message broker (e.g., RabbitMQ), optimized for a workload of 150 concurrent users, 12 GB data, on a host with 8 GB RAM. Include considerations for caching, message queuing, and database performance tuning.",
+      "success": true,
+      "summary": "Retrieved guidance for \"What are recommended tuning and configuration best practices for nginx, PostgreS\": [Resource allocation heuristics for single-host stacks (authored)] # Resource Allocation Guide for Single-Host Stacks This guide provides sizing heuristics for a single machine running nginx, PostgreSQL, and Redis under Docker Compose. Allocations are expressed as percentages of total host RAM and CPU core | [pgtune heuristics (community rules)] # PGTune Heuristics PGTune is a community tool that generates PostgreSQL configuration recommendations based on hardware specifications and workload type. The following heuristics represent widely adopted tuning rules derived from pgtune (p generate_config failed: openai: output failed schema validation after 3 retries: <failed_attempts>\n\n<generation number=\"1\">\n generate_config failed: openai: output failed schema validation after 3 retries: <failed_attempts>\n\n<generation number=\"1\">\n Generated a StackSpec configuration.",
+      "tokens_used": 35195,
+      "iterations_used": 4,
+      "artifacts": {
+        "last_spec": "<spec>"
+      }
+    },
+    {
+      "worker": "validation",
+      "task": "Deploy the provided Docker Compose configuration into a Docker environment. Run smoke tests, performance benchmarks, and basic CIS compliance checks to verify if the setup can handle 150 concurrent users with 12 GB data on an 8 GB RAM host. Report any issues.\n\nThe StackSpec to validate has been provided via context (auto-injected).",
+      "success": true,
+      "summary": "Validation: 0/4 smoke tests passed, 0/0 CIS checks passed.",
+      "tokens_used": 735,
+      "iterations_used": 1,
+      "artifacts": {
+        "validator_report": {
+          "timestamp": "2026-08-25T18:51:52.163847Z",
+          "smoke_tests": {
+            "postgres": {
+              "did_start": true,
+              "accepts_connections": false,
+              "error_message": "5] LOG:  provided user name (postgres) and authenticated user name (root) do not match\n2026-08-25 18:51:51.014 GMT [75] FATAL:  Peer authentication failed for user \"postgres\"\n2026-08-25 18:51:51.014 GMT [75] DETAIL:  Connection matched file \"/etc/postgresql/pg_hba.conf\" line 3: \"local\tall\tall\tpeer\"\n"
+            },
+            "redis": {
+              "did_start": false,
+              "accepts_connections": false,
+              "error_message": "\n*** FATAL CONFIG FILE ERROR (Redis 7.4.11) ***\nReading the configuration file, at line 8\n>>> 'maxmemory 1.2GB'\nargument must be a memory value\n"
+            },
+            "rabbitmq": {
+              "did_start": false,
+              "accepts_connections": false,
+              "error_message": "93+00:00 [info] <0.886.0>  * rabbitmq_management\u001b[0m\n2026-08-25 18:51:49.096493+00:00 [info] <0.886.0>  * rabbitmq_management_agent\u001b[0m\n2026-08-25 18:51:49.096493+00:00 [info] <0.886.0>  * rabbitmq_web_dispatch\u001b[0m\n2026-08-25 18:51:49.161286+00:00 [info] <0.10.0> Time to start RabbitMQ: 2746 ms\u001b[0m\n"
+            },
+            "nginx": {
+              "did_start": false,
+              "accepts_connections": false,
+              "error_message": "k-d49a40cdde8c-redis-1  Started\n Container stack-d49a40cdde8c-redis-1  Waiting\n Container stack-d49a40cdde8c-postgres-1  Waiting\n Container stack-d49a40cdde8c-redis-1  Error\n Container stack-d49a40cdde8c-postgres-1  Healthy\ndependency failed to start: container stack-d49a40cdde8c-redis-1 exited (1)\n"
+            }
+          },
+          "benchmarks": {},
+          "cis_results": [],
+          "healthchecks": {},
+          "error": "startup failed: docker compose up failed (exit 1):  Network stack_d49a40cdde8c_net  Creating\n Network stack_d49a40cdde8c_net  Created\n Volume \"stack-d49a40cdde8c_rabbitmqdata_d49a40cdde8c\"  Creating\n Volume \"stack-d49a40cdde8c_rabbitmqdata_d49a40cdde8c\"  Created\n Volume \"stack-d49a40cdde8c_pgdata_d49a40cdde8c\"  Creating\n Volume \"stack-d49a40cdde8c_pgdata_d49a40cdde8c\"  Created\n Container stack-d49a40cdde8c-rabbitmq-1  Creating\n Container stack-d49a40cdde8c-redis-1  Creating\n Container stack-d49a40cdde8c-postgres-1  Creating\n Container stack-d49a40cdde8c-rabbitmq-1  Created\n Container stack-d49a40cdde8c-redis-1  Created\n Container stack-d49a40cdde8c-postgres-1  Created\n Container stack-d49a40cdde8c-nginx-1  Creating\n Container stack-d49a40cdde8c-nginx-1  Created\n Container stack-d49a40cdde8c-postgres-1  Starting\n Container stack-d49a40cdde8c-redis-1  Starting\n Container stack-d49a40cdde8c-rabbitmq-1  Starting\n Container stack-d49a40cdde8c-postgres-1  Started\n Container stack-d49a40cdde8c-rabbitmq-1  Started\n Container stack-d49a40cdde8c-redis-1  Started\n Container stack-d49a40cdde8c-redis-1  Waiting\n Container stack-d49a40cdde8c-postgres-1  Waiting\n Container stack-d49a40cdde8c-redis-1  Error\n Container stack-d49a40cdde8c-postgres-1  Healthy\ndependency failed to start: container stack-d49a40cdde8c-redis-1 exited (1)\n"
+        }
+      }
+    },
+    {
+      "worker": "security",
+      "task": "Review and harden the current deployment configuration, focusing on PostgreSQL authentication issues, user permissions, message broker setup, and overall security best practices. Generate a revised, hardened configuration that addresses the authentication failures, secures network access, and clarifies message broker integration to support high concurrent traffic.",
+      "success": true,
+      "summary": "Retrieved guidance for \"What are the Redis CIS benchmark recommendations for security hardening?\": [CIS Redis Benchmark v1.0 (paraphrased extracts)] # CIS Redis \u2014 Level 1 Controls (Implemented) The following controls are paraphrased summaries of CIS Benchmark recommendations relevant to the project's Redis validator. Only controls that the validator checks are included. ## Network and A | [Redis Documentation: Security] # Redis Security Configuration Redis was originally designed for trusted environments, so security hardening is essential for any deployment exposed beyond localhost. The following directives and features control access, authentication, and Retrieved guidance for \"What are the Redis CIS benchmark recommendations for security hardening?\": [CIS Redis Benchmark v1.0 (paraphrased extracts)] # CIS Redis \u2014 Level 1 Controls (Implemented) The following controls are paraphrased summaries of CIS Benchmark recommendations relevant to the project's Redis validator. Only controls that the validator checks are included. ## Network and A | [Redis Documentation: Security] # Redis Security Configuration Redis was originally designed for trusted environments, so security hardening is essential for any deployment exposed beyond localhost. The following directives and features control access, authentication, and",
+      "tokens_used": 2977,
+      "iterations_used": 2,
+      "artifacts": {}
+    },
+    {
+      "worker": "config",
+      "task": "Refine the existing deployment configuration for nginx + PostgreSQL + Redis with an emphasis on fixing PostgreSQL authentication issues, configuring user permissions correctly, integrating the message broker (e.g., RabbitMQ) securely, and optimizing cache and performance settings for the described workload, considering the high concurrency and large data size.\n\nSecurity worker recommendations to apply: Retrieved guidance for \"What are the Redis CIS benchmark recommendations for security hardenin",
+      "success": true,
+      "summary": "Retrieved guidance for \"What are the Redis CIS benchmark recommendations for security hardening?\": [CIS Redis Benchmark v1.0 (paraphrased extracts)] # CIS Redis \u2014 Level 1 Controls (Implemented) The following controls are paraphrased summaries of CIS Benchmark recommendations relevant to the project's Redis validator. Only controls that the validator checks are included. ## Network and A | [Redis Documentation: Security] # Redis Security Configuration Redis was originally designed for trusted environments, so security hardening is essential for any deployment exposed beyond localhost. The following directives and features control access, authentication, and Generated a StackSpec configuration.",
+      "tokens_used": 21500,
+      "iterations_used": 2,
+      "artifacts": {
+        "last_spec": "<spec>"
+      }
+    }
+  ],
+  "scores": {
+    "completed": true,
+    "smoke_pass_rate": 0.0,
+    "selection_exact_match": false,
+    "selection_precision": 0.75,
+    "selection_recall": 1.0,
+    "selection_f1": 0.8571428571428571,
+    "selection_detail": [
+      {
+        "service": "postgres",
+        "expected": true,
+        "selected": true,
+        "verdict": "true_positive"
+      },
+      {
+        "service": "nginx",
+        "expected": true,
+        "selected": true,
+        "verdict": "true_positive"
+      },
+      {
+        "service": "redis",
+        "expected": true,
+        "selected": true,
+        "verdict": "true_positive"
+      },
+      {
+        "service": "rabbitmq",
+        "expected": false,
+        "selected": true,
+        "verdict": "false_positive"
+      }
+    ],
+    "correctness": 0.9230769230769231,
+    "parameters_checked": 13,
+    "parameter_details": [
+      {
+        "parameter": "postgres.shared_buffers_range",
+        "comparison": "range",
+        "expected": [
+          "1.2GB",
+          "2.8GB"
+        ],
+        "spec_path": "postgres.memory.shared_buffers",
+        "actual": "2GB",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.effective_cache_size_range",
+        "comparison": "range",
+        "expected": [
+          "3.2GB",
+          "6GB"
+        ],
+        "spec_path": "postgres.memory.effective_cache_size",
+        "actual": "6GB",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.maintenance_work_mem_range",
+        "comparison": "range",
+        "expected": [
+          "256MB",
+          "1GB"
+        ],
+        "spec_path": "postgres.memory.maintenance_work_mem",
+        "actual": "512MB",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.max_connections_range",
+        "comparison": "range",
+        "expected": [
+          38,
+          120
+        ],
+        "spec_path": "postgres.connections.max_connections",
+        "actual": 100,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.ssl",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "postgres.security.ssl",
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "postgres.password_encryption",
+        "comparison": "equality",
+        "expected": "scram-sha-256",
+        "spec_path": "postgres.security.password_encryption",
+        "actual": "scram-sha-256",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "nginx.server_tokens",
+        "comparison": "equality",
+        "expected": false,
+        "spec_path": "nginx.security.server_tokens",
+        "actual": false,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "nginx.ssl_protocols_min",
+        "comparison": "equality",
+        "expected": "TLSv1.2",
+        "spec_path": "nginx.ssl.protocols",
+        "actual_raw": [
+          "TLSv1.2",
+          "TLSv1.3"
+        ],
+        "actual": "TLSv1.2",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.maxmemory_set",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "redis.memory.maxmemory",
+        "actual_raw": "512MB",
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.maxmemory_range",
+        "comparison": "range",
+        "expected": [
+          "1.2GB",
+          "3.2GB"
+        ],
+        "spec_path": "redis.memory.maxmemory",
+        "actual": "512MB",
+        "passed": false,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.maxmemory_policy_acceptable",
+        "comparison": "membership",
+        "expected": [
+          "allkeys-lru",
+          "allkeys-lfu"
+        ],
+        "spec_path": "redis.memory.maxmemory_policy",
+        "actual": "allkeys-lru",
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.requirepass_or_acl",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "redis.security.requirepass",
+        "actual_raw": "change-me-strong-password",
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      },
+      {
+        "parameter": "redis.protected_mode",
+        "comparison": "equality",
+        "expected": true,
+        "spec_path": "redis.security.protected_mode",
+        "actual": true,
+        "passed": true,
+        "status": "compared"
+      }
+    ]
+  }
+}
