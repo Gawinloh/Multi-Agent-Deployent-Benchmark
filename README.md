@@ -1,115 +1,90 @@
 # Multi-Agent Deployment Benchmark
 
-An empirical comparison of single-agent and multi-agent LLM architectures for translating natural-language requirements into deployed multi-service web stacks (nginx + PostgreSQL + Redis).
+Do multi-agent LLM systems actually beat a single agent at infrastructure provisioning, once you give both the same token budget?
 
-## What this is
+This repository holds the artefact and the data for an MSc Applied AI dissertation at WMG, University of Warwick. The short answer is no, and the more useful finding is about how easily the measurement itself goes wrong.
 
-Type a paragraph of English describing the web stack you need. The system reads it, looks up the relevant tuning rules and security baselines via RAG, decides on configuration parameters, generates the Docker Compose stack and service configs, starts the stack in containers, runs benchmarks (`pgbench`, `wrk`, `redis-benchmark`) and CIS Level 1 security checks against it, and either accepts the configuration or iteratively revises it.
+## What it does
 
-The system is built **two ways**: a single-agent ReAct loop and a six-agent LangGraph state machine. Both share the same RAG corpus, the same tool registry, and the same Docker validator. They are evaluated against the same benchmark scenarios under strict token-budget parity.
+You describe a web stack in a paragraph of English. The system retrieves the relevant tuning rules and security baselines, chooses configuration parameters, renders a Docker Compose stack for nginx, PostgreSQL, Redis and RabbitMQ, starts it in containers, scores it against CIS Level 1 controls and either accepts the result or revises it.
 
-The benchmark measures whether multi-agent decomposition actually outperforms a strong single-agent baseline for sequential, well-specified infrastructure provisioning — a question recent literature (Tran & Kiela 2026; Anthropic "Building Effective Agents") has begun to challenge.
+It is built three ways:
 
-## Research question
+| Architecture | Shape |
+| --- | --- |
+| `single` | One ReAct loop with the full tool set |
+| `multi` | Star topology: an orchestrator delegating to config, security and validation workers |
+| `parallel` | One agent per service, fanned out, then merged |
 
-> *"To what extent does a multi-agent LLM architecture improve the correctness, safety, and cost-efficiency of natural-language-driven multi-service deployment compared to a single-agent baseline under token-budget parity?"*
+All three share the same retrieval corpus, tool registry, schemas and containerised validator. They differ only in control loop and prompts, so any difference is attributable to architecture rather than to infrastructure.
 
-Sub-questions:
-- SQ1: Does decomposing the task across specialised agents (one per service domain) improve per-service configuration correctness?
-- SQ2: Does an independent verifier (Critic + Validator agents) catch more safety violations than self-verification in a single agent?
-- SQ3: What is the cost overhead (tokens, latency) of multi-agent decomposition for sequential infrastructure provisioning?
-- SQ4: Under what task and architectural conditions does multi-agent decomposition justify its cost overhead?
+Budget parity is enforced mechanically. Every model call in every architecture draws from one shared token counter, not from a per-agent allowance.
 
-## Architecture
+## What was found
 
-**Single-agent baseline.** One LLM running a ReAct loop with tools for RAG retrieval, configuration generation, validator execution, and finalisation. Constrained-decoded output via Pydantic + Instructor.
+Across 680 runs in six studies, no architecture established an improvement in output quality. The null survived a rebuilt retrieval index, a second topology and a more capable model.
 
-**Multi-agent system.** Six specialised agents in a LangGraph state machine:
+Cost did not survive. The star architecture used 1.60 times as many tokens as the single agent on `gpt-4.1-nano` and 6.75 times as many on `gpt-4.1-mini`. The parallel architecture showed no established overhead.
 
-| Agent | Role |
-|---|---|
-| Requirements Analyst | Parse NL, build structured stack spec, apply SRA paradigm for ambiguities |
-| Sizing & Allocation | Distribute finite host resources (RAM, CPU) across services using Dominant Resource Fairness principles |
-| nginx Designer | Pick nginx parameters grounded in nginx docs + CIS nginx Benchmark + Mozilla SSL |
-| PostgreSQL Designer | Pick Postgres parameters grounded in PG docs + CIS PG Benchmark + pgtune logic |
-| Redis Designer | Pick Redis parameters grounded in Redis docs + CIS Redis Benchmark |
-| Validator | Spin up the stack in Docker, run benchmarks, run CIS checks, return structured report |
-| Critic | Read validator report; accept, route targeted revision to specific designer, or abort |
+All 36 failed runs were resource exhaustion. None matched any category in the MAST coordination-failure taxonomy, which is what you would expect from a star topology where workers never address one another.
 
-(The IaC Generator that renders Pydantic specs into config files is a deterministic step shared by both architectures.)
+The measurement finding is the transferable one. A binding token cap censored the cost of the more expensive arm, survivor-only averages manufactured an apparent quality advantage and a nominally identical iteration cap meant different things in the two architectures. Pre-specifying the analysis did not prevent this, because the bias entered through the instrument rather than through the analysis.
 
-## Tech stack
+## Layout
 
-- **Python 3.11+** — agent runtime
-- **LangGraph** — multi-agent orchestration as a stateful directed graph
-- **Instructor + Pydantic** — constrained decoding of LLM outputs against typed schemas
-- **LlamaIndex + Chroma + BM25** — hybrid keyword+vector RAG over PostgreSQL, nginx, Redis, and CIS Benchmark documentation
-- **Ollama** (local) / **Anthropic, OpenAI, Google APIs** (cloud) — model serving
-- **Docker + docker-compose** — sandboxed multi-service test harness
-- **pgbench, wrk, redis-benchmark, pgAudit** — performance and compliance benchmarking
-- **Pandas, NumPy, SciPy, Matplotlib** — statistical analysis and figure generation
+| Path | Contents |
+| --- | --- |
+| `src/agents/` | The three architectures |
+| `src/tools/`, `src/schemas/` | Shared tool registry and Pydantic output schemas |
+| `src/rag/` | Hybrid BM25 and dense retrieval, fused by reciprocal rank |
+| `src/validator/` | Docker harness and CIS Level 1 checkers |
+| `src/llm/` | Model clients and the shared token budget |
+| `benchmark/` | Both scenario sets and the scripts deriving their ground truth |
+| `corpus/` | The 31 retrieval documents |
+| `results/` | Run records as JSON, one file per run |
+| `scripts/` | Batch runner and the deterministic analysis scripts |
+| `tests/` | 486 test functions across 22 modules |
 
-## Repository structure
+Ground truth is derived from published rules by script rather than authored by hand, so it can be regenerated and audited.
 
-| Path | Purpose |
-|---|---|
-| `src/agents/` | Single-agent baseline and multi-agent system implementations |
-| `src/tools/` | Shared tools: RAG query, config generation, validation, finalisation |
-| `src/rag/` | RAG corpus indexing and retrieval |
-| `src/validator/` | Docker harness, CIS checks, pgbench/wrk/redis-benchmark wrappers |
-| `src/llm/` | LLM client abstraction + token-budget enforcement |
-| `src/schemas/` | Pydantic models for structured outputs |
-| `src/experiment/` | Experiment runner, metrics, analysis scripts |
-| `corpus/` | RAG source documents (PostgreSQL, nginx, Redis docs, CIS Benchmarks, tuning guides) |
-| `benchmark/scenarios/` | Natural-language scenarios with derived ground truth |
-| `results/aggregated/` | Processed metrics across experimental runs |
-| `results/figures/` | Plots and visualisations |
-| `tests/` | Unit tests |
+## Reproducing the analysis
 
-## Getting started
+Each collection is tagged, and every run record carries the commit of the working tree at the moment the run started.
+
+| Study | Tag | Model | Runs |
+| --- | --- | --- | ---: |
+| 1 | `dataset-nano-n3` | `gpt-4.1-nano-2025-04-14` | 72 |
+| 2 | `dataset-study2-n3` | `gpt-4.1-nano-2025-04-14` | 48 |
+| 3 | `dataset-study3-n10` | `gpt-4.1-nano-2025-04-14` | 160 |
+| 4 | `dataset-study4-n10` | `gpt-4.1-nano-2025-04-14` | 160 |
+| 5 | `dataset-study5-n10` | `gpt-4.1-nano-2025-04-14` | 80 |
+| 6 | `dataset-study6-n10` | `gpt-4.1-mini-2025-04-14` | 160 |
 
 ```bash
-# 1. Install Python deps
 pip install -e ".[dev]"
-
-# 2. Configure LLM backend
-cp .env.example .env
-# Edit .env with your API keys or Ollama settings
-
-# 3. Pull a local model (if using Ollama)
-ollama pull qwen2.5:7b
-
-# 4. Verify Docker is running
-docker info
-
-# 5. Build the RAG index
-python -m src.rag.build_index
-
-# 6. Run a smoke test
-python -m src.experiment.runner \
-    --scenario benchmark/scenarios/smoke_test.yaml \
-    --architecture single
-
-# 7. Run the full evaluation matrix (overnight)
-python -m src.experiment.runner --full-matrix
+git checkout dataset-study6-n10
+python scripts/analyse_study6.py
 ```
 
-## Methodology
+The analysis is deterministic. Running it against a tagged collection reproduces the reported tables and figures exactly.
 
-The project follows Design Science Research. Both architectures are compared on identical natural-language scenarios under strict token-budget parity. The RAG corpus, tool registry, and Docker validator harness are held constant across both architectures so any performance difference is attributable to the agentic architecture itself, not to differences in underlying infrastructure.
+`results/` also contains collections that are not reported: a tuning set, a discarded first attempt at Study 5 and a small local-model set. They are kept for transparency and are excluded by the analysis scripts, which filter on model.
 
-Evaluation metrics include configuration correctness (per-service parameters within expected ranges derived from pgtune, LlamaTune's 45-knob set, Mozilla SSL profiles), safety violations caught (CIS Level 1 controls across all three services), self-correction effectiveness, total token cost, and wall-clock latency. Statistical analysis uses paired comparisons across scenarios with 95% confidence intervals. Observed multi-agent failures are categorised against Cemri et al.'s MAST taxonomy.
+## Collecting new runs
 
-## Background
+This needs Docker and an OpenAI API key, and will not reproduce the stored records exactly, since model inference is not deterministic.
 
-This system was built as the empirical artefact of an MSc Applied AI dissertation at WMG, University of Warwick. The work tests claims from recent literature on multi-agent LLM cost-efficiency — particularly Tran & Kiela's argument that single-agent systems match or beat multi-agent under equal token budgets, and Anthropic's published doctrine favouring the simplest viable architecture.
+```bash
+cp .env.example .env        # add your key
+python -m src.experiment.runner \
+    --scenario benchmark/scenarios/scenario_002_oltp_small.yaml \
+    --architecture single
 
-A full report including the literature review, methodology, findings, and discussion will be linked here after submission.
+python scripts/run_matrix.py --runs 10 --budget 100000
+```
 
-## Reproducibility
+## Status
 
-Benchmark scenarios with ground-truth derivations are published under `benchmark/`. The RAG corpus is in `corpus/`. Aggregated experimental results and figures are in `results/`. Raw run logs (large, regenerable) are excluded from version control but can be reproduced by re-running the experimental matrix.
+Dissertation submitted September 2026. The report will be linked here once marks are released.
 
-## License
-
-To be decided.
+Licence to be decided.
